@@ -17,6 +17,9 @@ export interface Product {
   price: number;
   category: string;
   image: string;
+  image2?: string;
+  image3?: string;
+  video_url?: string;
   description: string;
   average_rating: number;
   review_count: number;

@@ -99,6 +99,18 @@ db.exec(`
     FOREIGN KEY(user_id) REFERENCES users(id)
   );
 
+  CREATE TABLE IF NOT EXISTS promotions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id INTEGER,
+    title TEXT,
+    subtitle TEXT,
+    description TEXT,
+    image TEXT,
+    is_active BOOLEAN DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(product_id) REFERENCES products(id)
+  );
+
   CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     sender_id INTEGER,
@@ -109,6 +121,15 @@ db.exec(`
     FOREIGN KEY(sender_id) REFERENCES users(id),
     FOREIGN KEY(receiver_id) REFERENCES users(id)
   );
+
+  CREATE TABLE IF NOT EXISTS product_views (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    product_id INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id),
+    FOREIGN KEY(product_id) REFERENCES products(id)
+  );
 `);
 
 // Seed data if the database is empty
@@ -117,6 +138,14 @@ try {
 } catch (e) {
   // Column already exists, ignore
 }
+
+try {
+  db.exec('ALTER TABLE products ADD COLUMN views INTEGER DEFAULT 0');
+} catch (e) {}
+
+try {
+  db.exec('ALTER TABLE products ADD COLUMN sales INTEGER DEFAULT 0');
+} catch (e) {}
 
 try {
   db.exec('ALTER TABLE users ADD COLUMN password TEXT');
@@ -322,6 +351,27 @@ async function startServer() {
     res.json(stmt.all());
   });
 
+  app.get('/api/products/:id', (req, res) => {
+    try {
+      db.prepare('UPDATE products SET views = views + 1 WHERE id = ?').run(req.params.id);
+      const product = db.prepare(`
+        SELECT p.*, u.name as vendor_name, u.kyc_status as vendor_kyc_status,
+               IFNULL(AVG(r.rating), 0) as average_rating, 
+               COUNT(r.id) as review_count
+        FROM products p
+        JOIN users u ON p.vendor_id = u.id
+        LEFT JOIN reviews r ON p.id = r.product_id
+        WHERE p.id = ?
+        GROUP BY p.id
+      `).get(req.params.id);
+      
+      if (!product) return res.status(404).json({ error: 'Product not found' });
+      res.json(product);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch product' });
+    }
+  });
+
   // --- REVIEWS ROUTES ---
   app.get('/api/products/:id/reviews', (req, res) => {
     const stmt = db.prepare(`
@@ -336,9 +386,8 @@ async function startServer() {
 
   app.post('/api/products/:id/reviews', (req, res) => {
     const { user_id, rating, comment } = req.body;
-    const stmt = db.prepare('INSERT INTO reviews (product_id, user_id, rating, comment) VALUES (?, ?, ?, ?)');
     try {
-      const info = stmt.run(req.params.id, user_id, rating, comment);
+      const info = db.prepare('INSERT INTO reviews (product_id, user_id, rating, comment) VALUES (?, ?, ?, ?)').run(req.params.id, user_id, rating, comment);
       
       // Notify vendor
       const product = db.prepare('SELECT vendor_id, name FROM products WHERE id = ?').get(req.params.id) as any;
@@ -402,25 +451,40 @@ async function startServer() {
     const insertOrder = db.prepare('INSERT INTO orders (buyer_id, shipping_address, total, status) VALUES (?, ?, ?, ?)');
     const insertOrderItem = db.prepare('INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)');
     const insertNotification = db.prepare('INSERT INTO notifications (user_id, message, type) VALUES (?, ?, ?)');
-    const getProductVendor = db.prepare('SELECT vendor_id, name FROM products WHERE id = ?');
+    const getProduct = db.prepare('SELECT vendor_id, name, stock FROM products WHERE id = ?');
+    const updateStock = db.prepare('UPDATE products SET stock = stock - ?, sales = sales + ? WHERE id = ?');
     
     const transaction = db.transaction(() => {
+      // 1. Check stock first
+      for (const item of items) {
+        const product = getProduct.get(item.id) as any;
+        if (!product) throw new Error(`Product ${item.id} not found`);
+        if (product.stock < item.quantity) throw new Error(`Insufficient stock for ${product.name}`);
+      }
+
+      // 2. Create Order
       const info = insertOrder.run(buyer_id, address, total, 'Processing');
       const orderId = info.lastInsertRowid;
       
       const vendorIds = new Set<number>();
       for (const item of items) {
+        // 3. Insert Items & Deduct Stock
         insertOrderItem.run(orderId, item.id, item.quantity, item.price);
-        const product = getProductVendor.get(item.id) as any;
+        updateStock.run(item.quantity, item.quantity, item.id);
+        
+        const product = getProduct.get(item.id) as any;
         if (product) {
           vendorIds.add(product.vendor_id);
         }
       }
 
-      // Notify vendors
+      // 4. Notify vendors
       for (const vendorId of vendorIds) {
         insertNotification.run(vendorId, `You have a new order (#${orderId}) to fulfill.`, 'order');
       }
+      
+      // 5. Notify buyer
+      insertNotification.run(buyer_id, `Order #${orderId} placed successfully!`, 'order');
 
       return orderId;
     });
@@ -428,8 +492,21 @@ async function startServer() {
     try {
       const orderId = transaction();
       res.json({ success: true, orderId });
-    } catch (error) {
-      res.status(500).json({ success: false, error: 'Checkout failed' });
+    } catch (error: any) {
+      res.status(400).json({ success: false, error: error.message || 'Checkout failed' });
+    }
+  });
+
+  app.post('/api/auth/forgot-password', (req, res) => {
+    const { email } = req.body;
+    const user = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    if (user) {
+      // In a real app, send email with reset token
+      // For demo, just return success
+      res.json({ success: true, message: 'Password reset link sent to your email.' });
+    } else {
+      // For security, don't reveal if user exists, but for demo we can be vague
+      res.json({ success: true, message: 'If an account exists, a reset link has been sent.' });
     }
   });
 
@@ -644,7 +721,7 @@ app.post('/api/vendor/:id/kyc', (req, res) => {
 });
 
 app.get('/api/admin/kyc', (req, res) => {
-  const users = db.prepare("SELECT id, name, email, avatar, kyc_status, kyc_document, created_at FROM users WHERE kyc_status = 'pending'").all();
+  const users = db.prepare("SELECT id, name, email, avatar, kyc_status, kyc_document, created_at FROM users WHERE kyc_status IS NOT NULL").all();
   res.json(users);
 });
 
@@ -735,24 +812,6 @@ app.get('/api/admin/chart', (req, res) => {
     res.json(ordersWithItems);
   });
 
-  app.post('/api/products/:id/reviews', (req, res) => {
-    const { user_id, rating, comment } = req.body;
-    const productId = req.params.id;
-    
-    try {
-      db.prepare('INSERT INTO reviews (product_id, user_id, rating, comment) VALUES (?, ?, ?, ?)').run(productId, user_id, rating, comment);
-      
-      const product = db.prepare('SELECT vendor_id, name FROM products WHERE id = ?').get(productId) as any;
-      if (product) {
-        db.prepare('INSERT INTO notifications (user_id, message, type) VALUES (?, ?, ?)').run(product.vendor_id, `New ${rating}-star review on ${product.name}`, 'review');
-      }
-      
-      res.json({ success: true });
-    } catch (err) {
-      res.status(500).json({ success: false, error: 'Failed to add review' });
-    }
-  });
-
   app.get('/api/admin/dashboard', (req, res) => {
     const totalRevenue = (db.prepare('SELECT SUM(total) as total FROM orders').get() as any).total || 0;
     const totalUsers = (db.prepare('SELECT COUNT(*) as count FROM users').get() as any).count || 0;
@@ -814,13 +873,111 @@ app.get('/api/admin/chart', (req, res) => {
     res.json(products);
   });
 
-  app.delete('/api/admin/products/:id', (req, res) => {
+  // --- WISHLIST ROUTES ---
+  app.get('/api/wishlist/:userId', (req, res) => {
+    const wishlist = db.prepare(`
+      SELECT p.*, u.name as vendor_name 
+      FROM wishlists w 
+      JOIN products p ON w.product_id = p.id 
+      JOIN users u ON p.vendor_id = u.id 
+      WHERE w.user_id = ?
+    `).all(req.params.userId);
+    res.json(wishlist);
+  });
+
+  app.post('/api/wishlist/toggle', (req, res) => {
+    const { userId, productId } = req.body;
     try {
-      db.prepare('DELETE FROM products WHERE id = ?').run(req.params.id);
-      res.json({ success: true });
+      const exists = db.prepare('SELECT id FROM wishlists WHERE user_id = ? AND product_id = ?').get(userId, productId);
+      if (exists) {
+        db.prepare('DELETE FROM wishlists WHERE user_id = ? AND product_id = ?').run(userId, productId);
+        res.json({ success: true, action: 'removed' });
+      } else {
+        db.prepare('INSERT INTO wishlists (user_id, product_id) VALUES (?, ?)').run(userId, productId);
+        res.json({ success: true, action: 'added' });
+      }
     } catch (error) {
-      res.status(500).json({ success: false, error: 'Failed to delete product' });
+      res.status(500).json({ success: false, error: 'Failed to toggle wishlist' });
     }
+  });
+
+  // --- USER ORDERS & STATS ---
+  app.get('/api/users/:id/orders', (req, res) => {
+    const orders = db.prepare(`
+      SELECT o.*, 
+             (SELECT COUNT(*) FROM order_items WHERE order_id = o.id) as item_count
+      FROM orders o 
+      WHERE o.buyer_id = ? 
+      ORDER BY o.created_at DESC
+    `).all(req.params.id);
+    
+    // Fetch items for each order
+    const ordersWithItems = orders.map((order: any) => {
+      const items = db.prepare(`
+        SELECT oi.*, p.name, p.image 
+        FROM order_items oi 
+        JOIN products p ON oi.product_id = p.id 
+        WHERE oi.order_id = ?
+      `).all(order.id);
+      return { ...order, items };
+    });
+    
+    res.json(ordersWithItems);
+  });
+
+  app.get('/api/vendor/:id/stats', (req, res) => {
+    const vendorId = req.params.id;
+    
+    // Total Sales
+    const totalSales = db.prepare(`
+      SELECT SUM(oi.quantity * oi.price) as total 
+      FROM order_items oi 
+      JOIN products p ON oi.product_id = p.id 
+      WHERE p.vendor_id = ?
+    `).get(vendorId) as any;
+
+    // Sales by Product
+    const salesByProduct = db.prepare(`
+      SELECT p.name, SUM(oi.quantity) as quantity, SUM(oi.quantity * oi.price) as revenue
+      FROM order_items oi
+      JOIN products p ON oi.product_id = p.id
+      WHERE p.vendor_id = ?
+      GROUP BY p.id
+      ORDER BY revenue DESC
+      LIMIT 5
+    `).all(vendorId);
+
+    // Recent Orders
+    const recentOrders = db.prepare(`
+      SELECT DISTINCT o.id, o.created_at, o.status, u.name as buyer_name
+      FROM orders o
+      JOIN order_items oi ON o.id = oi.order_id
+      JOIN products p ON oi.product_id = p.id
+      JOIN users u ON o.buyer_id = u.id
+      WHERE p.vendor_id = ?
+      ORDER BY o.created_at DESC
+      LIMIT 10
+    `).all(vendorId);
+
+    res.json({
+      totalSales: totalSales?.total || 0,
+      salesByProduct,
+      recentOrders
+    });
+  });
+
+  app.get('/api/vendor/:id/analytics', (req, res) => {
+    const vendorId = req.params.id;
+    
+    const totalViews = db.prepare('SELECT SUM(views) as total_views FROM products WHERE vendor_id = ?').get(vendorId) as any;
+    const totalSales = db.prepare('SELECT SUM(sales) as total_sales FROM products WHERE vendor_id = ?').get(vendorId) as any;
+    const topProducts = db.prepare('SELECT name, views, sales FROM products WHERE vendor_id = ? ORDER BY sales DESC, views DESC LIMIT 5').all(vendorId);
+    
+    res.json({
+      totalViews: totalViews?.total_views || 0,
+      totalSales: totalSales?.total_sales || 0,
+      topProducts
+    });
   });
 
   // --- COMMON ROUTES ---
@@ -894,6 +1051,143 @@ app.get('/api/admin/chart', (req, res) => {
       ORDER BY created_at ASC
     `).all(userId, otherUserId, otherUserId, userId);
     res.json(messages);
+  });
+
+  // --- PROMOTIONS ROUTES ---
+  app.get('/api/promotions', (req, res) => {
+    const promotions = db.prepare(`
+      SELECT pr.*, p.name as product_name, p.price as product_price, p.image as product_image
+      FROM promotions pr
+      LEFT JOIN products p ON pr.product_id = p.id
+      WHERE pr.is_active = 1
+      ORDER BY pr.created_at DESC
+    `).all();
+    res.json(promotions);
+  });
+
+  app.get('/api/admin/promotions', (req, res) => {
+    const promotions = db.prepare(`
+      SELECT pr.*, p.name as product_name
+      FROM promotions pr
+      LEFT JOIN products p ON pr.product_id = p.id
+      ORDER BY pr.created_at DESC
+    `).all();
+    res.json(promotions);
+  });
+
+  app.post('/api/admin/promotions', (req, res) => {
+    const { productId, title, subtitle, description, image } = req.body;
+    try {
+      db.prepare('INSERT INTO promotions (product_id, title, subtitle, description, image) VALUES (?, ?, ?, ?, ?)').run(productId, title, subtitle, description, image);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ success: false, error: 'Failed to add promotion' });
+    }
+  });
+
+  app.delete('/api/admin/promotions/:id', (req, res) => {
+    try {
+      db.prepare('DELETE FROM promotions WHERE id = ?').run(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ success: false, error: 'Failed to delete promotion' });
+    }
+  });
+
+  app.put('/api/admin/promotions/:id/toggle', (req, res) => {
+    try {
+      db.prepare('UPDATE promotions SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END WHERE id = ?').run(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ success: false, error: 'Failed to toggle promotion' });
+    }
+  });
+
+  // --- PRODUCT VIEWS & RECOMMENDATIONS ---
+  app.post('/api/products/:id/view', (req, res) => {
+    const { userId } = req.body;
+    const productId = req.params.id;
+    try {
+      if (userId) {
+        db.prepare('INSERT INTO product_views (user_id, product_id) VALUES (?, ?)').run(userId, productId);
+      }
+      res.json({ success: true });
+    } catch (error) {
+      // Ignore errors (e.g., if user spams views, we might just want to log it or ignore)
+      res.json({ success: false }); 
+    }
+  });
+
+  app.get('/api/recommendations', (req, res) => {
+    const { userId, type, productId } = req.query; // type: 'history', 'popular', 'related'
+    
+    let products = [];
+
+    try {
+      // Infer type if not provided
+      let queryType = type;
+      if (!queryType) {
+        if (productId) queryType = 'related';
+        else if (userId) queryType = 'history';
+        else queryType = 'popular';
+      }
+
+      if (queryType === 'history' && userId) {
+        // Recently viewed products
+        products = db.prepare(`
+          SELECT p.*, u.name as vendor_name, u.kyc_status as vendor_kyc_status,
+                 IFNULL(AVG(r.rating), 0) as average_rating, 
+                 COUNT(r.id) as review_count,
+                 MAX(pv.created_at) as last_viewed
+          FROM product_views pv
+          JOIN products p ON pv.product_id = p.id
+          JOIN users u ON p.vendor_id = u.id
+          LEFT JOIN reviews r ON p.id = r.product_id
+          WHERE pv.user_id = ?
+          GROUP BY p.id
+          ORDER BY last_viewed DESC
+          LIMIT 5
+        `).all(userId);
+      } else if (queryType === 'related' && productId) {
+        // Products in the same category, excluding the current one
+        const currentProduct = db.prepare('SELECT category FROM products WHERE id = ?').get(productId) as any;
+        if (currentProduct) {
+          products = db.prepare(`
+            SELECT p.*, u.name as vendor_name, u.kyc_status as vendor_kyc_status,
+                   IFNULL(AVG(r.rating), 0) as average_rating, 
+                   COUNT(r.id) as review_count
+            FROM products p
+            JOIN users u ON p.vendor_id = u.id
+            LEFT JOIN reviews r ON p.id = r.product_id
+            WHERE p.category = ? AND p.id != ?
+            GROUP BY p.id
+            ORDER BY RANDOM()
+            LIMIT 4
+          `).all(currentProduct.category, productId);
+        }
+      } else {
+        // Default: Popular products (most viewed)
+        // If no views, just random
+        products = db.prepare(`
+          SELECT p.*, u.name as vendor_name, u.kyc_status as vendor_kyc_status,
+                 IFNULL(AVG(r.rating), 0) as average_rating, 
+                 COUNT(r.id) as review_count,
+                 COUNT(pv.id) as view_count
+          FROM products p
+          JOIN users u ON p.vendor_id = u.id
+          LEFT JOIN reviews r ON p.id = r.product_id
+          LEFT JOIN product_views pv ON p.id = pv.product_id
+          GROUP BY p.id
+          ORDER BY view_count DESC, average_rating DESC
+          LIMIT 8
+        `).all();
+      }
+      
+      res.json(products);
+    } catch (error) {
+      console.error("Recommendation error:", error);
+      res.status(500).json({ error: 'Failed to fetch recommendations' });
+    }
   });
 
   // --- Vite Middleware ---

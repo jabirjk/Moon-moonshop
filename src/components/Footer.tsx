@@ -11,13 +11,13 @@ const Footer: React.FC<FooterProps> = ({ currentUser, setCurrentView }) => {
   const currentYear = new Date().getFullYear();
 
   return (
-    <footer className="bg-slate-900 text-slate-300 py-12 border-t border-slate-800 mt-auto">
+    <footer className="bg-bg-side text-slate-300 py-12 border-t border-border-main mt-auto transition-colors duration-300">
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 mb-12">
           {/* Brand Column */}
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-white mb-4">
-              <Moon size={24} className="text-indigo-500" />
+              <Moon size={24} className="text-primary" />
               <span className="font-bold text-xl tracking-tight">Moonshop</span>
             </div>
             <p className="text-slate-400 text-sm leading-relaxed">
