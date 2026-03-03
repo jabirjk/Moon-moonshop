@@ -1,5 +1,5 @@
 {
   "name": "Moonshop",
   "description": "An e-commerce store for lunar goods and space exploration gear.",
-  "requestFramePermissions": []
+  "requestFramePermissions": ["microphone"]
 }

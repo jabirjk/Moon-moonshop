@@ -33,6 +33,10 @@ db.exec(`
     video_url TEXT,
     description TEXT,
     stock INTEGER DEFAULT 10,
+    shipping_cost REAL DEFAULT 0,
+    shipping_time TEXT DEFAULT '3-5 business days',
+    is_sale BOOLEAN DEFAULT 0,
+    sale_price REAL DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(vendor_id) REFERENCES users(id)
   );
@@ -43,6 +47,8 @@ db.exec(`
     total REAL,
     status TEXT, -- 'Processing', 'Shipped', 'Delivered'
     shipping_address TEXT,
+    shipping_method TEXT DEFAULT 'Standard',
+    shipping_cost REAL DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(buyer_id) REFERENCES users(id)
   );
@@ -99,6 +105,29 @@ db.exec(`
     FOREIGN KEY(user_id) REFERENCES users(id)
   );
 
+  CREATE TABLE IF NOT EXISTS tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE
+  );
+
+  CREATE TABLE IF NOT EXISTS product_tags (
+    product_id INTEGER,
+    tag_id INTEGER,
+    PRIMARY KEY (product_id, tag_id),
+    FOREIGN KEY(product_id) REFERENCES products(id),
+    FOREIGN KEY(tag_id) REFERENCES tags(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS stock_alerts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    product_id INTEGER,
+    email TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id),
+    FOREIGN KEY(product_id) REFERENCES products(id)
+  );
+
   CREATE TABLE IF NOT EXISTS promotions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     product_id INTEGER,
@@ -146,6 +175,14 @@ try {
 try {
   db.exec('ALTER TABLE products ADD COLUMN sales INTEGER DEFAULT 0');
 } catch (e) {}
+
+try { db.exec('ALTER TABLE products ADD COLUMN shipping_cost REAL DEFAULT 0'); } catch (e) {}
+try { db.exec('ALTER TABLE products ADD COLUMN shipping_time TEXT DEFAULT "3-5 business days"'); } catch (e) {}
+try { db.exec('ALTER TABLE products ADD COLUMN is_sale BOOLEAN DEFAULT 0'); } catch (e) {}
+try { db.exec('ALTER TABLE products ADD COLUMN sale_price REAL DEFAULT 0'); } catch (e) {}
+
+try { db.exec('ALTER TABLE orders ADD COLUMN shipping_method TEXT DEFAULT "Standard"'); } catch (e) {}
+try { db.exec('ALTER TABLE orders ADD COLUMN shipping_cost REAL DEFAULT 0'); } catch (e) {}
 
 try {
   db.exec('ALTER TABLE users ADD COLUMN password TEXT');
@@ -244,13 +281,16 @@ async function startServer() {
     // For demo/prototype: Simulate a successful login with a mock user
     // In production, you would look up or create the user in your DB based on the profile
     
-    const mockUser = {
-      id: 999,
-      name: 'Demo User',
-      email: `demo.${provider}@example.com`,
-      role: 'buyer',
-      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${provider}`
-    };
+    const email = `demo.${provider}@example.com`;
+    const name = `Demo ${provider.charAt(0).toUpperCase() + provider.slice(1)} User`;
+    const avatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${provider}`;
+    
+    let user = db.prepare('SELECT id, name, email, role, avatar, phone, address, social_links, preferences FROM users WHERE email = ?').get(email) as any;
+    
+    if (!user) {
+      const info = db.prepare('INSERT INTO users (name, email, role, avatar) VALUES (?, ?, ?, ?)').run(name, email, 'buyer', avatar);
+      user = db.prepare('SELECT id, name, email, role, avatar, phone, address, social_links, preferences FROM users WHERE id = ?').get(info.lastInsertRowid);
+    }
 
     // Send the user data back to the opener
     res.send(`
@@ -258,7 +298,7 @@ async function startServer() {
         <body>
           <script>
             if (window.opener) {
-              window.opener.postMessage({ type: 'OAUTH_SUCCESS', user: ${JSON.stringify(mockUser)} }, '*');
+              window.opener.postMessage({ type: 'OAUTH_SUCCESS', user: ${JSON.stringify(user)} }, '*');
               window.close();
             } else {
               window.location.href = '/';
@@ -307,18 +347,41 @@ async function startServer() {
     }
   });
 
+  app.post('/api/auth/oauth', (req, res) => {
+    const { provider, email, name, avatar, role } = req.body;
+    let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as any;
+    
+    if (user) {
+      const { password: _, ...userWithoutPassword } = user;
+      res.json({ success: true, user: userWithoutPassword });
+    } else {
+      try {
+        const defaultAvatar = avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${name.replace(/\s/g, '')}`;
+        const info = db.prepare('INSERT INTO users (name, email, role, avatar) VALUES (?, ?, ?, ?)').run(name, email, role || 'buyer', defaultAvatar);
+        const newUser = db.prepare('SELECT id, name, email, role, avatar FROM users WHERE id = ?').get(info.lastInsertRowid);
+        res.json({ success: true, user: newUser });
+      } catch (err: any) {
+        res.status(500).json({ success: false, error: 'Failed to create user via OAuth' });
+      }
+    }
+  });
+
   app.put('/api/users/:id', (req, res) => {
-    const { name, email, avatar, password } = req.body;
+    const { name, email, avatar, password, phone, address, social_links, preferences } = req.body;
     const userId = req.params.id;
     
     try {
       if (password) {
         const hashedPassword = hashPassword(password);
-        db.prepare('UPDATE users SET name = ?, email = ?, avatar = ?, password = ? WHERE id = ?').run(name, email, avatar, hashedPassword, userId);
+        db.prepare('UPDATE users SET name = ?, email = ?, avatar = ?, password = ?, phone = ?, address = ?, social_links = ?, preferences = ? WHERE id = ?').run(
+          name, email, avatar, hashedPassword, phone || null, address || null, social_links ? JSON.stringify(social_links) : null, preferences ? JSON.stringify(preferences) : null, userId
+        );
       } else {
-        db.prepare('UPDATE users SET name = ?, email = ?, avatar = ? WHERE id = ?').run(name, email, avatar, userId);
+        db.prepare('UPDATE users SET name = ?, email = ?, avatar = ?, phone = ?, address = ?, social_links = ?, preferences = ? WHERE id = ?').run(
+          name, email, avatar, phone || null, address || null, social_links ? JSON.stringify(social_links) : null, preferences ? JSON.stringify(preferences) : null, userId
+        );
       }
-      const updatedUser = db.prepare('SELECT id, name, email, role, avatar FROM users WHERE id = ?').get(userId);
+      const updatedUser = db.prepare('SELECT id, name, email, role, avatar, phone, address, social_links, preferences FROM users WHERE id = ?').get(userId);
       res.json({ success: true, user: updatedUser });
     } catch (err) {
       res.status(500).json({ success: false, error: 'Failed to update profile' });
@@ -340,12 +403,11 @@ async function startServer() {
   app.get('/api/products', (req, res) => {
     const stmt = db.prepare(`
       SELECT p.*, u.name as vendor_name, u.kyc_status as vendor_kyc_status,
-             IFNULL(AVG(r.rating), 0) as average_rating, 
-             COUNT(r.id) as review_count
+             IFNULL((SELECT AVG(rating) FROM reviews WHERE product_id = p.id), 0) as average_rating, 
+             (SELECT COUNT(id) FROM reviews WHERE product_id = p.id) as review_count,
+             IFNULL((SELECT AVG(rating) FROM vendor_reviews WHERE vendor_id = p.vendor_id), 0) as vendor_rating
       FROM products p
       JOIN users u ON p.vendor_id = u.id
-      LEFT JOIN reviews r ON p.id = r.product_id
-      GROUP BY p.id
       ORDER BY p.created_at DESC
     `);
     res.json(stmt.all());
@@ -356,13 +418,12 @@ async function startServer() {
       db.prepare('UPDATE products SET views = views + 1 WHERE id = ?').run(req.params.id);
       const product = db.prepare(`
         SELECT p.*, u.name as vendor_name, u.kyc_status as vendor_kyc_status,
-               IFNULL(AVG(r.rating), 0) as average_rating, 
-               COUNT(r.id) as review_count
+               IFNULL((SELECT AVG(rating) FROM reviews WHERE product_id = p.id), 0) as average_rating, 
+               (SELECT COUNT(id) FROM reviews WHERE product_id = p.id) as review_count,
+               IFNULL((SELECT AVG(rating) FROM vendor_reviews WHERE vendor_id = p.vendor_id), 0) as vendor_rating
         FROM products p
         JOIN users u ON p.vendor_id = u.id
-        LEFT JOIN reviews r ON p.id = r.product_id
         WHERE p.id = ?
-        GROUP BY p.id
       `).get(req.params.id);
       
       if (!product) return res.status(404).json({ error: 'Product not found' });
@@ -446,9 +507,9 @@ async function startServer() {
   });
 
   app.post('/api/checkout', (req, res) => {
-    const { buyer_id, address, items, total } = req.body;
+    const { buyer_id, address, items, total, shipping_method, shipping_cost } = req.body;
     
-    const insertOrder = db.prepare('INSERT INTO orders (buyer_id, shipping_address, total, status) VALUES (?, ?, ?, ?)');
+    const insertOrder = db.prepare('INSERT INTO orders (buyer_id, shipping_address, total, status, shipping_method, shipping_cost) VALUES (?, ?, ?, ?, ?, ?)');
     const insertOrderItem = db.prepare('INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)');
     const insertNotification = db.prepare('INSERT INTO notifications (user_id, message, type) VALUES (?, ?, ?)');
     const getProduct = db.prepare('SELECT vendor_id, name, stock FROM products WHERE id = ?');
@@ -463,7 +524,7 @@ async function startServer() {
       }
 
       // 2. Create Order
-      const info = insertOrder.run(buyer_id, address, total, 'Processing');
+      const info = insertOrder.run(buyer_id, address, total, 'Processing', shipping_method || 'Standard', shipping_cost || 0);
       const orderId = info.lastInsertRowid;
       
       const vendorIds = new Set<number>();
@@ -662,10 +723,10 @@ async function startServer() {
 
   app.post('/api/vendor/:id/products', (req, res) => {
     const vendorId = req.params.id;
-    const { name, price, category, image, image2, image3, video_url, description, stock } = req.body;
-    const stmt = db.prepare('INSERT INTO products (vendor_id, name, price, category, image, image2, image3, video_url, description, stock) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    const { name, price, category, image, image2, image3, video_url, description, stock, shipping_cost, shipping_time, is_sale, sale_price } = req.body;
+    const stmt = db.prepare('INSERT INTO products (vendor_id, name, price, category, image, image2, image3, video_url, description, stock, shipping_cost, shipping_time, is_sale, sale_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
     try {
-      const info = stmt.run(vendorId, name, price, category, image, image2 || null, image3 || null, video_url || null, description, stock || 10);
+      const info = stmt.run(vendorId, name, price, category, image, image2 || null, image3 || null, video_url || null, description, stock || 10, shipping_cost || 0, shipping_time || '3-5 business days', is_sale ? 1 : 0, sale_price || 0);
       res.json({ success: true, id: info.lastInsertRowid });
     } catch (error) {
       res.status(500).json({ success: false, error: 'Failed to add product' });
@@ -675,10 +736,10 @@ async function startServer() {
   app.put('/api/vendor/:id/products/:productId', (req, res) => {
     const vendorId = req.params.id;
     const productId = req.params.productId;
-    const { name, price, category, image, image2, image3, video_url, description, stock } = req.body;
+    const { name, price, category, image, image2, image3, video_url, description, stock, shipping_cost, shipping_time, is_sale, sale_price } = req.body;
     try {
-      db.prepare('UPDATE products SET name=?, price=?, category=?, image=?, image2=?, image3=?, video_url=?, description=?, stock=? WHERE id=? AND vendor_id=?')
-        .run(name, price, category, image, image2 || null, image3 || null, video_url || null, description, stock, productId, vendorId);
+      db.prepare('UPDATE products SET name=?, price=?, category=?, image=?, image2=?, image3=?, video_url=?, description=?, stock=?, shipping_cost=?, shipping_time=?, is_sale=?, sale_price=? WHERE id=? AND vendor_id=?')
+        .run(name, price, category, image, image2 || null, image3 || null, video_url || null, description, stock, shipping_cost || 0, shipping_time || '3-5 business days', is_sale ? 1 : 0, sale_price || 0, productId, vendorId);
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ success: false, error: 'Failed to update product' });
@@ -708,6 +769,13 @@ try {
 } catch (e) {
   // Columns already exist
 }
+
+try {
+  db.exec("ALTER TABLE users ADD COLUMN social_links TEXT DEFAULT '{}'");
+  db.exec("ALTER TABLE users ADD COLUMN preferences TEXT DEFAULT '{}'");
+  db.exec("ALTER TABLE users ADD COLUMN phone TEXT");
+  db.exec("ALTER TABLE users ADD COLUMN address TEXT");
+} catch (e) {}
 
 // --- KYC ROUTES ---
 app.post('/api/vendor/:id/kyc', (req, res) => {
@@ -1004,17 +1072,6 @@ app.get('/api/admin/chart', (req, res) => {
     }
   });
 
-  app.put('/api/users/:id', (req, res) => {
-    const { name, email, avatar } = req.body;
-    try {
-      db.prepare('UPDATE users SET name = ?, email = ?, avatar = ? WHERE id = ?').run(name, email, avatar, req.params.id);
-      const updatedUser = db.prepare('SELECT id, name, email, role, avatar FROM users WHERE id = ?').get(req.params.id);
-      res.json({ success: true, user: updatedUser });
-    } catch (error) {
-      res.status(500).json({ success: false, error: 'Failed to update user' });
-    }
-  });
-
   // --- CHAT ROUTES ---
   app.get('/api/chat/conversations/:userId', (req, res) => {
     const userId = req.params.userId;
@@ -1118,6 +1175,52 @@ app.get('/api/admin/chart', (req, res) => {
     }
   });
 
+  // --- TAGS & ALERTS ---
+  app.get('/api/tags', (req, res) => {
+    const tags = db.prepare('SELECT * FROM tags ORDER BY name').all();
+    res.json(tags);
+  });
+
+  app.get('/api/products/:id/tags', (req, res) => {
+    const tags = db.prepare(`
+      SELECT t.* 
+      FROM tags t
+      JOIN product_tags pt ON t.id = pt.tag_id
+      WHERE pt.product_id = ?
+    `).all(req.params.id);
+    res.json(tags);
+  });
+
+  app.post('/api/products/:id/tags', (req, res) => {
+    const { name } = req.body;
+    const productId = req.params.id;
+    
+    try {
+      // 1. Ensure tag exists
+      db.prepare('INSERT OR IGNORE INTO tags (name) VALUES (?)').run(name.toLowerCase());
+      const tag = db.prepare('SELECT id FROM tags WHERE name = ?').get(name.toLowerCase()) as any;
+      
+      // 2. Link tag to product
+      db.prepare('INSERT OR IGNORE INTO product_tags (product_id, tag_id) VALUES (?, ?)').run(productId, tag.id);
+      
+      res.json({ success: true, tag });
+    } catch (error) {
+      res.status(500).json({ success: false, error: 'Failed to add tag' });
+    }
+  });
+
+  app.post('/api/products/:id/stock-alert', (req, res) => {
+    const { email, user_id } = req.body;
+    const productId = req.params.id;
+    
+    try {
+      db.prepare('INSERT INTO stock_alerts (user_id, product_id, email) VALUES (?, ?, ?)').run(user_id || null, productId, email);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ success: false, error: 'Failed to set stock alert' });
+    }
+  });
+
   app.get('/api/recommendations', (req, res) => {
     const { userId, type, productId } = req.query; // type: 'history', 'popular', 'related'
     
@@ -1149,10 +1252,30 @@ app.get('/api/admin/chart', (req, res) => {
           LIMIT 5
         `).all(userId);
       } else if (queryType === 'related' && productId) {
-        // Products in the same category, excluding the current one
+        // Products in the same category OR sharing tags, excluding the current one
         const currentProduct = db.prepare('SELECT category FROM products WHERE id = ?').get(productId) as any;
+        
         if (currentProduct) {
-          products = db.prepare(`
+          // Get product tags
+          const tags = db.prepare('SELECT tag_id FROM product_tags WHERE product_id = ?').all(productId).map((t: any) => t.tag_id);
+          
+          let productsByTags: any[] = [];
+          if (tags.length > 0) {
+             const placeholders = tags.map(() => '?').join(',');
+             productsByTags = db.prepare(`
+               SELECT p.*, u.name as vendor_name, u.kyc_status as vendor_kyc_status,
+                      IFNULL(AVG(r.rating), 0) as average_rating, 
+                      COUNT(r.id) as review_count
+               FROM products p
+               JOIN users u ON p.vendor_id = u.id
+               LEFT JOIN reviews r ON p.id = r.product_id
+               JOIN product_tags pt ON p.id = pt.product_id
+               WHERE pt.tag_id IN (${placeholders}) AND p.id != ?
+               GROUP BY p.id
+             `).all(...tags, productId);
+          }
+
+          const productsByCategory = db.prepare(`
             SELECT p.*, u.name as vendor_name, u.kyc_status as vendor_kyc_status,
                    IFNULL(AVG(r.rating), 0) as average_rating, 
                    COUNT(r.id) as review_count
@@ -1164,6 +1287,12 @@ app.get('/api/admin/chart', (req, res) => {
             ORDER BY RANDOM()
             LIMIT 4
           `).all(currentProduct.category, productId);
+          
+          // Merge and deduplicate
+          const allRelated = [...productsByTags, ...productsByCategory];
+          const uniqueMap = new Map();
+          allRelated.forEach((p: any) => uniqueMap.set(p.id, p));
+          products = Array.from(uniqueMap.values()).slice(0, 8);
         }
       } else {
         // Default: Popular products (most viewed)

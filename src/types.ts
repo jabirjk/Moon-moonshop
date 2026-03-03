@@ -9,6 +9,10 @@ export interface User {
   created_at?: string;
   kyc_status?: 'unverified' | 'pending' | 'verified' | 'rejected';
   kyc_document?: string;
+  phone?: string;
+  address?: string;
+  social_links?: string;
+  preferences?: string;
 }
 
 export interface Product {
@@ -25,9 +29,15 @@ export interface Product {
   review_count: number;
   vendor_name?: string;
   vendor_kyc_status?: 'unverified' | 'pending' | 'verified' | 'rejected';
+  vendor_rating?: number;
   stock: number;
+  shipping_cost?: number;
+  shipping_time?: string;
+  is_sale?: boolean;
+  sale_price?: number;
   vendor_id?: number;
   created_at?: string;
+  tags?: string[];
 }
 
 export interface CartItem extends Product {
@@ -51,6 +61,8 @@ export interface Order {
   total: number;
   status: 'Processing' | 'Shipped' | 'Delivered';
   shipping_address: string;
+  shipping_method?: string;
+  shipping_cost?: number;
   created_at: string;
   buyer_name?: string;
   buyer_email?: string;
