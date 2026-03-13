@@ -226,7 +226,8 @@ if (userCount.count === 0) {
 
 async function startServer() {
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
   // --- AUTH ---
   app.get('/api/auth/google/url', (req, res) => {
@@ -400,6 +401,21 @@ async function startServer() {
   });
 
   // --- PUBLIC SHOP ---
+  app.get('/api/vendors', (req, res) => {
+    const vendors = db.prepare(`
+      SELECT 
+        u.id, u.name, u.avatar, u.created_at,
+        u.kyc_status, u.kyc_document,
+        (SELECT AVG(rating) FROM vendor_reviews WHERE vendor_id = u.id) as average_rating,
+        (SELECT COUNT(*) FROM vendor_reviews WHERE vendor_id = u.id) as review_count,
+        (SELECT COUNT(*) FROM products WHERE vendor_id = u.id) as product_count
+      FROM users u
+      WHERE u.role = 'vendor'
+      ORDER BY average_rating DESC, review_count DESC
+    `).all();
+    res.json(vendors);
+  });
+
   app.get('/api/products', (req, res) => {
     const stmt = db.prepare(`
       SELECT p.*, u.name as vendor_name, u.kyc_status as vendor_kyc_status,
@@ -722,13 +738,23 @@ async function startServer() {
   });
 
   app.post('/api/vendor/:id/products', (req, res) => {
-    const vendorId = req.params.id;
+    const vendorId = parseInt(req.params.id);
+    console.log('Attempting to add product for vendorId:', vendorId);
+    
+    // Check if the vendor exists
+    const vendor = db.prepare('SELECT id FROM users WHERE id = ?').get(vendorId);
+    if (!vendor) {
+      console.error('Vendor not found:', vendorId);
+      return res.status(400).json({ success: false, error: 'Vendor not found' });
+    }
+
     const { name, price, category, image, image2, image3, video_url, description, stock, shipping_cost, shipping_time, is_sale, sale_price } = req.body;
     const stmt = db.prepare('INSERT INTO products (vendor_id, name, price, category, image, image2, image3, video_url, description, stock, shipping_cost, shipping_time, is_sale, sale_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
     try {
       const info = stmt.run(vendorId, name, price, category, image, image2 || null, image3 || null, video_url || null, description, stock || 10, shipping_cost || 0, shipping_time || '3-5 business days', is_sale ? 1 : 0, sale_price || 0);
       res.json({ success: true, id: info.lastInsertRowid });
     } catch (error) {
+      console.error('Error adding product:', error);
       res.status(500).json({ success: false, error: 'Failed to add product' });
     }
   });
@@ -1006,9 +1032,11 @@ app.get('/api/admin/chart', (req, res) => {
 
     // Sales by Product
     const salesByProduct = db.prepare(`
-      SELECT p.name, SUM(oi.quantity) as quantity, SUM(oi.quantity * oi.price) as revenue
+      SELECT p.name, SUM(oi.quantity) as quantity, SUM(oi.quantity * oi.price) as revenue,
+             IFNULL(AVG(r.rating), 0) as averageRating
       FROM order_items oi
       JOIN products p ON oi.product_id = p.id
+      LEFT JOIN reviews r ON p.id = r.product_id
       WHERE p.vendor_id = ?
       GROUP BY p.id
       ORDER BY revenue DESC

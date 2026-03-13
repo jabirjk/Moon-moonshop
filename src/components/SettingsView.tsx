@@ -81,7 +81,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onUpdateUser, 
                 onClick={() => setActiveTab(tab.id as any)}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
                   activeTab === tab.id 
-                    ? 'bg-indigo-50 text-indigo-600 shadow-sm' 
+                    ? 'bg-emerald-50 text-emerald-600 shadow-sm' 
                     : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
@@ -135,7 +135,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onUpdateUser, 
                               type="text" 
                               value={avatarPreview}
                               onChange={(e) => setAvatarPreview(e.target.value)}
-                              className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
+                              className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all" 
                             />
                             <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-600 py-2.5 px-4 rounded-xl text-center text-sm flex items-center justify-center gap-2 border border-slate-200">
                               <Upload size={18} />
@@ -156,7 +156,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onUpdateUser, 
                               name="name" 
                               type="text" 
                               defaultValue={currentUser.name} 
-                              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
+                              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all" 
                             />
                           </div>
                         </div>
@@ -169,7 +169,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onUpdateUser, 
                               name="email" 
                               type="email" 
                               defaultValue={currentUser.email} 
-                              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
+                              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all" 
                             />
                           </div>
                         </div>
@@ -179,7 +179,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onUpdateUser, 
                         <button 
                           type="submit" 
                           disabled={isLoading}
-                          className="bg-slate-900 text-white px-6 py-2.5 rounded-xl font-medium hover:bg-indigo-600 transition-colors shadow-lg shadow-indigo-500/20 flex items-center gap-2"
+                          className="bg-slate-900 text-white px-6 py-2.5 rounded-xl font-medium hover:bg-emerald-600 transition-colors shadow-lg shadow-emerald-500/20 flex items-center gap-2"
                         >
                           {isLoading ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
                           {t('save_changes')}
@@ -214,7 +214,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onUpdateUser, 
                           <input 
                             name="password" 
                             type="password" 
-                            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
+                            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all" 
                             placeholder="••••••••" 
                           />
                         </div>
@@ -225,7 +225,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onUpdateUser, 
                         <button 
                           type="submit" 
                           disabled={isLoading}
-                          className="bg-slate-900 text-white px-6 py-2.5 rounded-xl font-medium hover:bg-indigo-600 transition-colors shadow-lg shadow-indigo-500/20 flex items-center gap-2"
+                          className="bg-slate-900 text-white px-6 py-2.5 rounded-xl font-medium hover:bg-emerald-600 transition-colors shadow-lg shadow-emerald-500/20 flex items-center gap-2"
                         >
                           {isLoading ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
                           {t('update_password')}
@@ -282,7 +282,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onUpdateUser, 
                           </div>
                           <label className="relative inline-flex items-center cursor-pointer">
                             <input type="checkbox" defaultChecked className="sr-only peer" />
-                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-emerald-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
                           </label>
                         </div>
                       ))}
@@ -291,7 +291,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onUpdateUser, 
                     <div className="mt-8 pt-8 border-t border-slate-100 flex justify-end">
                       <button 
                         onClick={() => showToast('Preferences saved!', 'success')}
-                        className="bg-slate-900 text-white px-6 py-2.5 rounded-xl font-medium hover:bg-indigo-600 transition-colors shadow-lg shadow-indigo-500/20"
+                        className="bg-slate-900 text-white px-6 py-2.5 rounded-xl font-medium hover:bg-emerald-600 transition-colors shadow-lg shadow-emerald-500/20"
                       >
                         Save Preferences
                       </button>
@@ -302,17 +302,17 @@ const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onUpdateUser, 
 
               {activeTab === 'vendor' && currentUser.role === 'buyer' && (
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                  <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-indigo-50/50">
+                  <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-emerald-50/50">
                     <div>
                       <h3 className="text-lg font-bold text-slate-900">{t('become_vendor')}</h3>
                       <p className="text-sm text-slate-500 mt-1">{t('vendor_subtitle')}</p>
                     </div>
-                    <Zap className="text-indigo-600" size={24} />
+                    <Zap className="text-emerald-600" size={24} />
                   </div>
                   
                   <div className="p-8 text-center">
                     <div className="max-w-md mx-auto space-y-6">
-                      <div className="w-20 h-20 bg-indigo-100 rounded-full flex items-center justify-center mx-auto text-indigo-600">
+                      <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto text-emerald-600">
                         <Award size={40} />
                       </div>
                       <h4 className="text-xl font-bold text-slate-900">{t('ready_launch')}</h4>
@@ -340,7 +340,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, onUpdateUser, 
                             }
                           }}
                           disabled={isLoading}
-                          className="w-full bg-indigo-600 text-white px-8 py-4 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2"
+                          className="w-full bg-emerald-600 text-white px-8 py-4 rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 flex items-center justify-center gap-2"
                         >
                           {isLoading ? <Loader2 className="animate-spin" size={20} /> : <Zap size={20} />}
                           {t('upgrade_vendor_btn')}

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality } from "@google/genai";
 import { Mic, Send, X, Bot, Search, Loader2, Volume2, VolumeX, Sparkles } from 'lucide-react';
 import Markdown from 'markdown-to-jsx';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface Message {
   id: string;
@@ -59,9 +59,9 @@ const AIAssistant = () => {
         });
         responseText = response.text || "I couldn't find anything on that.";
       } else {
-        // Use Gemini 2.5 Flash Lite for fast responses
+        // Use Gemini 3.1 Flash Lite for fast responses
         const response = await ai.models.generateContent({
-          model: "gemini-2.5-flash-lite-preview-02-05", // Using specific preview model or alias if available
+          model: "gemini-3.1-flash-lite-preview",
           contents: input,
         });
         responseText = response.text || "I'm not sure how to respond to that.";
@@ -249,7 +249,7 @@ const AIAssistant = () => {
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 z-50 bg-indigo-600 text-white p-4 rounded-full shadow-lg hover:bg-indigo-700 transition-colors flex items-center justify-center"
+        className="fixed bottom-6 right-6 z-50 bg-emerald-600 text-white p-4 rounded-full shadow-lg hover:bg-emerald-700 transition-colors flex items-center justify-center"
       >
         <Sparkles size={24} />
       </motion.button>
@@ -266,7 +266,7 @@ const AIAssistant = () => {
             {/* Header */}
             <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Bot size={20} className="text-indigo-400" />
+                <Bot size={20} className="text-emerald-400" />
                 <h3 className="font-bold">MoonShop AI</h3>
               </div>
               <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white transition-colors">
@@ -278,13 +278,13 @@ const AIAssistant = () => {
             <div className="p-2 bg-slate-50 border-b border-slate-100 flex gap-2">
               <button 
                 onClick={() => setUseSearch(false)}
-                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors ${!useSearch ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-500 hover:bg-slate-100'}`}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors ${!useSearch ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-500 hover:bg-slate-100'}`}
               >
                 <Bot size={14} /> Fast Chat
               </button>
               <button 
                 onClick={() => setUseSearch(true)}
-                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors ${useSearch ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-500 hover:bg-slate-100'}`}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors ${useSearch ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-500 hover:bg-slate-100'}`}
               >
                 <Search size={14} /> Web Search
               </button>
@@ -304,11 +304,11 @@ const AIAssistant = () => {
                 <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[85%] p-3 rounded-2xl text-sm ${
                     msg.role === 'user' 
-                      ? 'bg-indigo-600 text-white rounded-br-none' 
+                      ? 'bg-emerald-600 text-white rounded-br-none' 
                       : 'bg-white text-slate-700 border border-slate-200 rounded-bl-none shadow-sm'
                   }`}>
                     {msg.isSearch && msg.role === 'model' && (
-                      <div className="flex items-center gap-1 text-[10px] font-bold text-indigo-600 mb-1 uppercase tracking-wider">
+                      <div className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 mb-1 uppercase tracking-wider">
                         <Search size={10} /> Sources Included
                       </div>
                     )}
@@ -320,7 +320,7 @@ const AIAssistant = () => {
               {isLoading && (
                 <div className="flex justify-start">
                   <div className="bg-white p-3 rounded-2xl rounded-bl-none border border-slate-200 shadow-sm">
-                    <Loader2 size={16} className="animate-spin text-indigo-600" />
+                    <Loader2 size={16} className="animate-spin text-emerald-600" />
                   </div>
                 </div>
               )}
@@ -336,7 +336,7 @@ const AIAssistant = () => {
                   exit={{ opacity: 0 }}
                   className="absolute inset-0 bg-slate-900/95 backdrop-blur-sm z-10 flex flex-col items-center justify-center text-white"
                 >
-                  <div className="w-24 h-24 rounded-full bg-indigo-600 flex items-center justify-center mb-8 animate-pulse shadow-[0_0_40px_rgba(79,70,229,0.5)]">
+                  <div className="w-24 h-24 rounded-full bg-emerald-600 flex items-center justify-center mb-8 animate-pulse shadow-[0_0_40px_rgba(16,185,129,0.5)]">
                     <Mic size={40} />
                   </div>
                   <h3 className="text-2xl font-bold mb-2">Listening...</h3>
@@ -367,13 +367,13 @@ const AIAssistant = () => {
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                     placeholder={useSearch ? "Ask anything..." : "Chat with AI..."}
-                    className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                    className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
                     disabled={isLoading || isVoiceActive}
                   />
                   <button 
                     onClick={handleSend}
                     disabled={!input.trim() || isLoading || isVoiceActive}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-indigo-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-700 transition-colors"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-emerald-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-emerald-700 transition-colors"
                   >
                     <Send size={14} />
                   </button>

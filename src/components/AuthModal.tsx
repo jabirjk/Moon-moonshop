@@ -122,15 +122,15 @@ const AuthModal: React.FC<AuthModalProps> = ({
                     <X size={24} />
                   </button>
                 </div>
-                <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-indigo-500/20 rounded-full blur-3xl"></div>
+                <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-emerald-500/20 rounded-full blur-3xl"></div>
                 <div className="absolute top-10 right-10 w-20 h-20 bg-emerald-500/20 rounded-full blur-2xl"></div>
               </div>
 
               <div className="relative px-8 pt-8 pb-8">
                 {/* Logo & Title */}
                 <div className="text-center mb-8">
-                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white shadow-lg text-indigo-600 mb-4 relative z-10 -mt-16">
-                    <Moon size={32} fill="currentColor" className="text-indigo-600" />
+                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white shadow-lg text-emerald-600 mb-4 relative z-10 -mt-16">
+                    <Moon size={32} fill="currentColor" className="text-emerald-600" />
                   </div>
                   <h2 className="text-2xl font-bold text-slate-900 mt-2">
                     {authMode === 'login' ? 'Welcome Back' : authMode === 'signup' ? 'Create Account' : 'Reset Password'}
@@ -151,7 +151,7 @@ const AuthModal: React.FC<AuthModalProps> = ({
                     <p className="text-slate-500 mb-6">We've sent a password reset link to <span className="font-medium text-slate-900">{email}</span></p>
                     <button 
                       onClick={() => setAuthMode('login')}
-                      className="text-indigo-600 font-medium hover:text-indigo-700 flex items-center justify-center gap-2 mx-auto"
+                      className="text-emerald-600 font-medium hover:text-emerald-700 flex items-center justify-center gap-2 mx-auto"
                     >
                       Back to Sign In <ArrowRight size={16} />
                     </button>
@@ -160,40 +160,40 @@ const AuthModal: React.FC<AuthModalProps> = ({
                   <form onSubmit={handleSubmit} className="space-y-4">
                     {authMode === 'signup' && (
                       <div className="relative group">
-                        <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={20} />
+                        <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors" size={20} />
                         <input 
                           type="text" 
                           placeholder="Full Name" 
                           value={name} 
                           onChange={e => setName(e.target.value)} 
                           required 
-                          className="w-full pl-12 pr-4 py-3.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
+                          className="w-full pl-12 pr-4 py-3.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all" 
                         />
                       </div>
                     )}
                     
                     <div className="relative group">
-                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={20} />
+                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors" size={20} />
                       <input 
                         type="email" 
                         placeholder="Email Address" 
                         value={email} 
                         onChange={e => setEmail(e.target.value)} 
                         required 
-                        className="w-full pl-12 pr-4 py-3.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
+                        className="w-full pl-12 pr-4 py-3.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all" 
                       />
                     </div>
 
                     {authMode !== 'forgot-password' && (
                       <div className="relative group">
-                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={20} />
+                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors" size={20} />
                         <input 
                           type={showPassword ? "text" : "password"} 
                           placeholder="Password" 
                           value={password} 
                           onChange={e => setPassword(e.target.value)} 
                           required 
-                          className="w-full pl-12 pr-12 py-3.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all" 
+                          className="w-full pl-12 pr-12 py-3.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all" 
                         />
                         <button 
                           type="button" 
@@ -210,7 +210,7 @@ const AuthModal: React.FC<AuthModalProps> = ({
                         <button 
                           type="button" 
                           onClick={() => setAuthMode('forgot-password')}
-                          className="text-sm font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
+                          className="text-sm font-medium text-emerald-600 hover:text-emerald-700 transition-colors"
                         >
                           Forgot Password?
                         </button>
@@ -266,7 +266,7 @@ const AuthModal: React.FC<AuthModalProps> = ({
                      "Remember your password? "}
                     <button 
                       onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')} 
-                      className="font-bold text-indigo-600 hover:text-indigo-700 transition-colors"
+                      className="font-bold text-emerald-600 hover:text-emerald-700 transition-colors"
                     >
                       {authMode === 'login' ? 'Sign Up' : 'Sign In'}
                     </button>

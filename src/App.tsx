@@ -1,12 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ShoppingCart, Moon, Star, Search, Menu, X, ChevronRight, ChevronLeft, Plus, Minus, Trash2, CheckCircle2, CreditCard, Package, LayoutDashboard, History, ChevronDown, StarHalf, Truck, LogOut, Users, Settings, Tag, DollarSign, Activity, Box, PlusCircle, Heart, TrendingUp, Filter, Award, Zap, Bell, Mail, Lock, Eye, EyeOff, ArrowRight, Globe, Sparkles, Video, Image as ImageIcon, Upload, MessageSquare, Camera, Save, KeyRound, ShieldAlert, ExternalLink, Home, User, Palette, Sun, Phone, MapPin, Twitter, Instagram, LayoutGrid, ThumbsUp, Scan, UserCheck, Fingerprint, FileCheck, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { ShoppingCart, Moon, Star, Search, Menu, X, ChevronRight, ChevronLeft, Plus, Minus, Trash2, CheckCircle2, CreditCard, Package, LayoutDashboard, History, ChevronDown, StarHalf, Truck, LogOut, Users, Settings, Tag, DollarSign, Activity, Box, PlusCircle, Heart, TrendingUp, Filter, Award, Zap, Bell, Mail, Lock, Eye, EyeOff, ArrowRight, Globe, Sparkles, Video, Image as ImageIcon, Upload, MessageSquare, Camera, Save, KeyRound, ShieldAlert, ExternalLink, Home, User, Palette, Sun, Phone, MapPin, Twitter, Instagram, LayoutGrid, ThumbsUp, Scan, UserCheck, Fingerprint, FileCheck, ShieldCheck, AlertTriangle, Flame } from 'lucide-react';
+import DashboardLayout from './components/DashboardLayout';
+import Navbar from './components/Navbar';
+import Skeleton from './components/Skeleton';
 import { GoogleGenAI, Type } from "@google/genai";
 import AIAssistant from './components/AIAssistant';
+import * as authService from './features/auth/auth.service';
+import * as productService from './features/product/product.service';
+import * as orderService from './features/order/order.service';
+import * as vendorService from './features/vendor/vendor.service';
 
 // Initialize Gemini AI
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 import { motion, AnimatePresence } from 'motion/react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import Footer from './components/Footer';
 import { User as UserType, Product, Review, CartItem } from './types';
 
@@ -180,7 +187,10 @@ export default function App() {
   const themes = [
     { id: 'light', name: 'Light', icon: <Sun size={14} />, color: 'bg-white' },
     { id: 'dark', name: 'Dark', icon: <Moon size={14} />, color: 'bg-slate-900' },
-    { id: 'midnight', name: 'Midnight', icon: <Sparkles size={14} />, color: 'bg-indigo-950' },
+    { id: 'midnight', name: 'Midnight', icon: <Sparkles size={14} />, color: 'bg-emerald-950' },
+    { id: 'violet', name: 'Violet', icon: <Zap size={14} />, color: 'bg-violet-600' },
+    { id: 'rose', name: 'Rose', icon: <Heart size={14} />, color: 'bg-rose-600' },
+    { id: 'amber', name: 'Amber', icon: <Flame size={14} />, color: 'bg-amber-500' },
   ];
 
   const ThemeSwitcher = () => (
@@ -215,7 +225,9 @@ export default function App() {
 
   // Shop State
   const [products, setProducts] = useState<Product[]>([]);
+  const [vendors, setVendors] = useState<any[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
+  const [loadingVendors, setLoadingVendors] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'featured' | 'price-asc' | 'price-desc' | 'name'>('featured');
@@ -283,18 +295,34 @@ export default function App() {
     else setCurrentView('buyer_dashboard');
   };
 
-  const fetchProducts = () => {
+  const fetchShopData = () => {
     setLoadingProducts(true);
-    fetch('/api/products').then(res => res.json()).then(data => { setProducts(data); setLoadingProducts(false); });
+    setLoadingVendors(true);
+    Promise.all([
+      productService.fetchProducts(),
+      vendorService.fetchVendors()
+    ]).then(([productsData, vendorsData]) => {
+      setProducts(productsData);
+      setVendors(vendorsData);
+      setLoadingProducts(false);
+      setLoadingVendors(false);
+    }).catch(err => {
+      console.error('Error fetching shop data:', err);
+      setLoadingProducts(false);
+      setLoadingVendors(false);
+    });
   };
 
   const fetchNotifications = () => {
     if (currentUser) {
-      fetch(`/api/users/${currentUser.id}/notifications`).then(res => res.json()).then(setNotifications);
+      fetch(`/api/users/${currentUser.id}/notifications`)
+        .then(res => res.json())
+        .then(setNotifications)
+        .catch(err => console.error('Error fetching notifications:', err));
     }
   };
 
-  useEffect(() => { if (currentView === 'shop') fetchProducts(); }, [currentView]);
+  useEffect(() => { if (currentView === 'shop') fetchShopData(); }, [currentView]);
   useEffect(() => { fetchNotifications(); }, [currentUser]);
 
   // Chat WebSocket Initialization
@@ -341,7 +369,8 @@ export default function App() {
           setConversations(data);
           const totalUnread = data.reduce((acc: number, conv: any) => acc + conv.unread_count, 0);
           setUnreadChatCount(totalUnread);
-        });
+        })
+        .catch(err => console.error('Error fetching conversations:', err));
     }
   };
 
@@ -352,7 +381,8 @@ export default function App() {
         .then(data => {
           setChatMessages(data);
           fetchConversations(); // Refresh unread count
-        });
+        })
+        .catch(err => console.error('Error fetching chat messages:', err));
     }
   };
 
@@ -372,9 +402,15 @@ export default function App() {
         showToast(`Welcome back, ${user.name}!`);
         setIsAuthOpen(false);
         if (user.role === 'buyer') {
-          fetch(`/api/buyer/${user.id}/wishlist`).then(r => r.json()).then(setWishlist);
+          fetch(`/api/buyer/${user.id}/wishlist`)
+            .then(r => r.json())
+            .then(setWishlist)
+            .catch(err => console.error('Error fetching wishlist:', err));
         }
-        fetch(`/api/users/${user.id}/notifications`).then(r => r.json()).then(setNotifications);
+        fetch(`/api/users/${user.id}/notifications`)
+          .then(r => r.json())
+          .then(setNotifications)
+          .catch(err => console.error('Error fetching notifications:', err));
       }
     };
     window.addEventListener('message', handleMessage);
@@ -467,10 +503,10 @@ export default function App() {
     const [newComment, setNewComment] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const fetchReviews = () => {
-      fetch(`/api/products/${product.id}/reviews`)
-        .then(res => res.json())
-        .then(data => { setReviews(data); setLoading(false); });
+    const fetchReviews = async () => {
+      const data = await productService.fetchProductReviews(product.id);
+      setReviews(data);
+      setLoading(false);
     };
 
     useEffect(() => { fetchReviews(); }, [product.id]);
@@ -480,19 +516,11 @@ export default function App() {
       if (!currentUser || currentUser.role !== 'buyer') return;
       setIsSubmitting(true);
       try {
-        const res = await fetch(`/api/products/${product.id}/reviews`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ user_id: currentUser.id, rating: newRating, comment: newComment })
-        });
-        if (res.ok) {
-          setNewComment('');
-          setNewRating(5);
-          fetchReviews();
-          showToast('Review submitted successfully!');
-        } else {
-          showToast('Failed to submit review', 'error');
-        }
+        await productService.postProductReview(product.id, { user_id: currentUser.id, rating: newRating, comment: newComment });
+        setNewComment('');
+        setNewRating(5);
+        fetchReviews();
+        showToast('Review submitted successfully!');
       } catch (err) {
         showToast('Error submitting review', 'error');
       } finally {
@@ -509,7 +537,7 @@ export default function App() {
             {!currentUser ? (
               <div className="text-center py-6">
                 <p className="text-slate-600 mb-4">Please log in to write a review.</p>
-                <button type="button" onClick={() => { setAuthMode('login'); setAuthRole('buyer'); setIsAuthOpen(true); }} className="bg-slate-900 text-white px-6 py-2 rounded-xl font-medium hover:bg-indigo-600 transition-colors">Sign In</button>
+                <button type="button" onClick={() => { setAuthMode('login'); setAuthRole('buyer'); setIsAuthOpen(true); }} className="bg-slate-900 text-white px-6 py-2 rounded-xl font-medium hover:bg-emerald-600 transition-colors">Sign In</button>
               </div>
             ) : (
               <>
@@ -525,14 +553,14 @@ export default function App() {
                     value={newComment}
                     onChange={(e) => setNewComment(e.target.value)}
                     rows={3}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
                     placeholder="What did you think about this product?"
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="bg-slate-900 text-white px-6 py-2 rounded-xl font-medium hover:bg-indigo-600 transition-colors disabled:opacity-50"
+                  className="bg-slate-900 text-white px-6 py-2 rounded-xl font-medium hover:bg-emerald-600 transition-colors disabled:opacity-50"
                 >
                   {isSubmitting ? 'Submitting...' : 'Submit Review'}
                 </button>
@@ -542,7 +570,7 @@ export default function App() {
         )}
 
         {loading ? (
-          <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>
+          <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div></div>
         ) : reviews.length === 0 ? (
           <p className="text-slate-500 text-center py-8">No reviews yet. Be the first to review this product!</p>
         ) : (
@@ -577,8 +605,15 @@ export default function App() {
 
     const fetchReviews = () => {
       fetch(`/api/vendor/${vendorId}/reviews`)
-        .then(res => res.json())
-        .then(data => { setReviews(data); setLoading(false); });
+        .then(res => {
+          if (!res.ok) throw new Error('Failed to fetch reviews');
+          return res.json();
+        })
+        .then(data => { setReviews(data); setLoading(false); })
+        .catch(err => {
+          console.error('Error fetching reviews:', err);
+          setLoading(false);
+        });
     };
 
     useEffect(() => { fetchReviews(); }, [vendorId]);
@@ -618,7 +653,7 @@ export default function App() {
             {!currentUser ? (
               <div className="text-center py-6">
                 <p className="text-slate-600 mb-4">Please log in to review this vendor.</p>
-                <button type="button" onClick={() => { setAuthMode('login'); setAuthRole('buyer'); setIsAuthOpen(true); }} className="bg-slate-900 text-white px-6 py-2 rounded-xl font-medium hover:bg-indigo-600 transition-colors">Sign In</button>
+                <button type="button" onClick={() => { setAuthMode('login'); setAuthRole('buyer'); setIsAuthOpen(true); }} className="bg-slate-900 text-white px-6 py-2 rounded-xl font-medium hover:bg-emerald-600 transition-colors">Sign In</button>
               </div>
             ) : (
               <>
@@ -634,14 +669,14 @@ export default function App() {
                     value={newComment}
                     onChange={(e) => setNewComment(e.target.value)}
                     rows={3}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
                     placeholder="How was the service and communication?"
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold hover:bg-indigo-600 transition-colors disabled:opacity-50 shadow-md"
+                  className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold hover:bg-emerald-600 transition-colors disabled:opacity-50 shadow-md"
                 >
                   {isSubmitting ? 'Submitting...' : 'Submit Vendor Review'}
                 </button>
@@ -651,7 +686,7 @@ export default function App() {
         )}
 
         {loading ? (
-          <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>
+          <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div></div>
         ) : reviews.length === 0 ? (
           <div className="text-center py-12 border-2 border-dashed border-slate-100 rounded-2xl">
             <MessageSquare className="mx-auto text-slate-200 mb-4" size={48} />
@@ -722,7 +757,7 @@ export default function App() {
                       <button 
                         key={idx} 
                         onClick={() => setActiveImage(img)}
-                        className={`w-16 h-16 rounded-xl overflow-hidden border-2 transition-all shrink-0 ${activeImage === img ? 'border-indigo-600 shadow-md' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                        className={`w-16 h-16 rounded-xl overflow-hidden border-2 transition-all shrink-0 ${activeImage === img ? 'border-emerald-600 shadow-md' : 'border-transparent opacity-60 hover:opacity-100'}`}
                       >
                         <img src={img} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       </button>
@@ -733,7 +768,7 @@ export default function App() {
               
               <div className="md:w-1/2 p-6 md:p-10 overflow-y-auto">
                 <div className="mb-2">
-                  <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-2 block">{product.category}</span>
+                  <span className="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-2 block">{product.category}</span>
                   <h2 className="text-3xl font-bold text-slate-900">{product.name}</h2>
                 </div>
                 
@@ -757,7 +792,7 @@ export default function App() {
                   <button 
                     onClick={() => { addToCart(product); setIsCartOpen(true); onClose(); }} 
                     disabled={product.stock === 0}
-                    className={`w-full font-bold py-3.5 rounded-xl transition-colors shadow-lg flex items-center justify-center gap-2 ${product.stock > 0 ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+                    className={`w-full font-bold py-3.5 rounded-xl transition-colors shadow-lg flex items-center justify-center gap-2 ${product.stock > 0 ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-200' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
                   >
                     <ShoppingCart size={20} /> {product.stock > 0 ? 'Add to Cart' : 'Out of Stock'}
                   </button>
@@ -812,10 +847,17 @@ export default function App() {
       }
     }, [promotions]);
     
+    const [selectedTag, setSelectedTag] = useState<string | null>(null);
+    const [allTags, setAllTags] = useState<any[]>([]);
+
+    useEffect(() => {
+        fetch('/api/tags').then(res => res.json()).then(setAllTags);
+    }, []);
+
     // Reset page when filters change
     useEffect(() => {
       setCurrentPage(1);
-    }, [searchQuery, selectedCategory, minPrice, maxPrice, inStockOnly, sortBy]);
+    }, [searchQuery, selectedCategory, minPrice, maxPrice, inStockOnly, sortBy, selectedTag]);
 
     const [timeLeft, setTimeLeft] = useState({ hours: 2, minutes: 45, seconds: 0 });
 
@@ -838,13 +880,14 @@ export default function App() {
         const matchesMinPrice = minPrice === '' || p.price >= Number(minPrice);
         const matchesMaxPrice = maxPrice === '' || p.price <= Number(maxPrice);
         const matchesStock = inStockOnly ? p.stock > 0 : true;
-        return matchesSearch && matchesCategory && matchesMinPrice && matchesMaxPrice && matchesStock;
+        const matchesTag = selectedTag ? p.tags?.some((t: any) => t.name === selectedTag) : true;
+        return matchesSearch && matchesCategory && matchesMinPrice && matchesMaxPrice && matchesStock && matchesTag;
       });
       if (sortBy === 'price-asc') f.sort((a, b) => a.price - b.price);
       if (sortBy === 'price-desc') f.sort((a, b) => b.price - a.price);
       if (sortBy === 'name') f.sort((a, b) => a.name.localeCompare(b.name));
       return f;
-    }, [products, searchQuery, selectedCategory, sortBy, minPrice, maxPrice, inStockOnly]);
+    }, [products, searchQuery, selectedCategory, sortBy, minPrice, maxPrice, inStockOnly, selectedTag]);
 
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -853,10 +896,10 @@ export default function App() {
           <div className="flex whitespace-nowrap animate-marquee">
             {[1, 2, 3, 4, 5].map((i) => (
               <div key={i} className="flex items-center gap-8 mx-4">
-                <span className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-400">
-                  <Zap size={12} className="fill-indigo-400" /> Flash Sale Live
+                <span className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-400">
+                  <Zap size={12} className="fill-emerald-400" /> Flash Sale Live
                 </span>
-                <span className="text-[10px] font-black text-white bg-indigo-600 px-2 py-0.5 rounded border border-indigo-500">
+                <span className="text-[10px] font-black text-white bg-emerald-600 px-2 py-0.5 rounded border border-emerald-500">
                   {timeLeft.hours.toString().padStart(2, '0')}:{timeLeft.minutes.toString().padStart(2, '0')}:{timeLeft.seconds.toString().padStart(2, '0')}
                 </span>
                 <span className="text-[10px] font-medium uppercase tracking-widest opacity-70">Up to 70% Off on Electronics</span>
@@ -896,8 +939,8 @@ export default function App() {
                         transition={{ delay: 0.2, duration: 0.5 }}
                       >
                         {promotions[currentPromoIndex].subtitle && (
-                          <span className="inline-flex items-center gap-2 py-1.5 px-4 rounded-full bg-indigo-500/10 text-indigo-400 text-xs font-bold tracking-[0.2em] uppercase mb-8 border border-indigo-500/20">
-                            <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
+                          <span className="inline-flex items-center gap-2 py-1.5 px-4 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-bold tracking-[0.2em] uppercase mb-8 border border-emerald-500/20">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                             {promotions[currentPromoIndex].subtitle}
                           </span>
                         )}
@@ -947,7 +990,7 @@ export default function App() {
                             Explore Collection 
                             <ArrowRight size={20} className="group-hover/btn:translate-x-1 transition-transform duration-300" />
                           </span>
-                          <div className="absolute inset-0 bg-gradient-to-r from-indigo-100 to-white opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300"></div>
+                          <div className="absolute inset-0 bg-gradient-to-r from-emerald-100 to-white opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300"></div>
                         </button>
                       </motion.div>
                     </div>
@@ -972,7 +1015,7 @@ export default function App() {
                         className="absolute top-12 right-12 bg-white/10 backdrop-blur-xl border border-white/20 p-6 rounded-3xl shadow-2xl"
                       >
                         <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-full bg-indigo-500 flex items-center justify-center text-white">
+                          <div className="w-12 h-12 rounded-full bg-emerald-500 flex items-center justify-center text-white">
                             <Sparkles size={24} />
                           </div>
                           <div>
@@ -988,15 +1031,15 @@ export default function App() {
                       initial={{ width: "0%" }}
                       animate={{ width: "100%" }}
                       transition={{ duration: 5, ease: "linear" }}
-                      className="absolute bottom-0 left-0 h-1.5 bg-gradient-to-r from-indigo-500 to-purple-500 z-30"
+                      className="absolute bottom-0 left-0 h-1.5 bg-gradient-to-r from-emerald-500 to-purple-500 z-30"
                     />
                   </motion.div>
                 ) : (
                   // Fallback Hero
                   <div className="absolute inset-0 flex flex-col md:flex-row">
                     <div className="relative z-10 p-8 sm:p-16 md:w-1/2 h-full flex flex-col justify-center bg-slate-900/95 backdrop-blur-3xl border-r border-white/10">
-                      <span className="inline-flex items-center gap-2 py-1.5 px-4 rounded-full bg-indigo-500/10 text-indigo-400 text-xs font-bold tracking-[0.2em] uppercase mb-8 border border-indigo-500/20">
-                        <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
+                      <span className="inline-flex items-center gap-2 py-1.5 px-4 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-bold tracking-[0.2em] uppercase mb-8 border border-emerald-500/20">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                         New Collection
                       </span>
                       <h1 className="text-5xl sm:text-6xl lg:text-7xl font-display font-black mb-6 leading-[1.05] tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-white via-slate-200 to-slate-500">
@@ -1033,7 +1076,7 @@ export default function App() {
                       <button 
                         key={idx} 
                         onClick={() => setCurrentPromoIndex(idx)}
-                        className={`h-1.5 rounded-full transition-all duration-500 ${idx === currentPromoIndex ? 'bg-indigo-500 w-8' : 'bg-white/20 w-2 hover:bg-white/40'}`}
+                        className={`h-1.5 rounded-full transition-all duration-500 ${idx === currentPromoIndex ? 'bg-emerald-500 w-8' : 'bg-white/20 w-2 hover:bg-white/40'}`}
                       />
                     ))}
                   </div>
@@ -1047,12 +1090,77 @@ export default function App() {
               )}
             </div>
 
+            {/* Featured Vendors Section */}
+            {!loadingVendors && vendors.length > 0 && (
+              <div className="mb-16">
+                <div className="flex items-center justify-between mb-8">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-emerald-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-emerald-200">
+                      <Users size={24} />
+                    </div>
+                    <div>
+                      <h2 className="text-3xl font-display font-black text-slate-900 tracking-tight">Top Rated Vendors</h2>
+                      <p className="text-slate-500 font-medium">Discover premium stores curated for you</p>
+                    </div>
+                  </div>
+                  <button className="text-sm font-bold text-emerald-600 hover:text-emerald-800 flex items-center gap-1 transition-colors">
+                    View All Vendors <ChevronRight size={16} />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {vendors.slice(0, 4).map((v) => (
+                    <motion.div 
+                      key={v.id}
+                      whileHover={{ y: -5 }}
+                      onClick={() => { setSelectedVendorId(v.id); setCurrentView('vendor_storefront'); }}
+                      className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-xl transition-all cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-4 mb-4">
+                        <div className="relative">
+                          <img src={v.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${v.name}`} alt={v.name} className="w-16 h-16 rounded-2xl object-cover border-2 border-slate-50" referrerPolicy="no-referrer" />
+                          {v.kyc_status === 'verified' && (
+                            <div className="absolute -bottom-1 -right-1 bg-blue-500 text-white p-1 rounded-full border-2 border-white">
+                              <CheckCircle2 size={10} />
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-slate-900 group-hover:text-emerald-600 transition-colors">{v.name}</h3>
+                          <div className="flex items-center gap-1">
+                            <StarRating rating={Math.round(v.average_rating || 0)} />
+                            <span className="text-[10px] font-bold text-slate-400">({v.review_count})</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between text-xs font-medium text-slate-500 bg-slate-50 rounded-xl p-3">
+                        <div className="flex flex-col items-center">
+                          <span className="text-slate-900 font-bold">{v.product_count}</span>
+                          <span>Products</span>
+                        </div>
+                        <div className="w-px h-6 bg-slate-200"></div>
+                        <div className="flex flex-col items-center">
+                          <span className="text-slate-900 font-bold">{(v.average_rating || 0).toFixed(1)}</span>
+                          <span>Rating</span>
+                        </div>
+                        <div className="w-px h-6 bg-slate-200"></div>
+                        <div className="flex flex-col items-center">
+                          <span className="text-slate-900 font-bold">99%</span>
+                          <span>Positive</span>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Trending Section */}
         {!searchQuery && !selectedCategory && (
           <div className="mb-16 bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-sm">
             <div className="flex items-center justify-between mb-8">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-200">
+                <div className="w-12 h-12 bg-emerald-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-emerald-200">
                   <TrendingUp size={24} />
                 </div>
                 <div>
@@ -1060,7 +1168,7 @@ export default function App() {
                   <p className="text-slate-500 text-sm">Most popular items this week</p>
                 </div>
               </div>
-              <button onClick={() => document.getElementById('product-grid')?.scrollIntoView({ behavior: 'smooth' })} className="text-sm font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition-colors">
+              <button onClick={() => document.getElementById('product-grid')?.scrollIntoView({ behavior: 'smooth' })} className="text-sm font-bold text-emerald-600 hover:text-emerald-800 flex items-center gap-1 transition-colors">
                 View All <ArrowRight size={16} />
               </button>
             </div>
@@ -1075,12 +1183,12 @@ export default function App() {
                 >
                   <div className="relative aspect-square rounded-2xl overflow-hidden mb-4">
                     <img src={product.image} alt={product.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-md px-2 py-1 rounded-lg text-[10px] font-bold text-indigo-600 shadow-sm">
+                    <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-md px-2 py-1 rounded-lg text-[10px] font-bold text-emerald-600 shadow-sm">
                       #{Math.floor(Math.random() * 10) + 1} Trending
                     </div>
                   </div>
                   <h4 className="font-bold text-slate-900 mb-1 line-clamp-1">{product.name}</h4>
-                  <p className="text-indigo-600 font-mono font-bold">${product.price.toLocaleString()}</p>
+                  <p className="text-emerald-600 font-mono font-bold">${product.price.toLocaleString()}</p>
                 </motion.div>
               ))}
             </div>
@@ -1092,9 +1200,9 @@ export default function App() {
               <div className="mb-16">
                 <div className="flex items-center justify-between mb-8">
                   <h2 className="text-3xl font-display font-bold text-slate-900 flex items-center gap-3">
-                    <Sparkles className="text-indigo-600" size={28} /> {currentUser ? 'Curated For You' : 'Trending Now'}
+                    <Sparkles className="text-emerald-600" size={28} /> {currentUser ? 'Curated For You' : 'Trending Now'}
                   </h2>
-                  <button onClick={() => document.getElementById('product-grid')?.scrollIntoView({ behavior: 'smooth' })} className="text-sm font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition-colors">
+                  <button onClick={() => document.getElementById('product-grid')?.scrollIntoView({ behavior: 'smooth' })} className="text-sm font-bold text-emerald-600 hover:text-emerald-800 flex items-center gap-1 transition-colors">
                     View All <ArrowRight size={16} />
                   </button>
                 </div>
@@ -1111,7 +1219,7 @@ export default function App() {
                         {product.stock === 0 && <span className="absolute top-4 left-4 bg-rose-500/90 backdrop-blur-md text-[10px] font-bold px-3 py-1.5 rounded-full text-white uppercase tracking-widest shadow-sm">Out of Stock</span>}
                       </div>
                       <div className="flex flex-col flex-1 px-2">
-                        <h3 className="text-lg font-display font-bold text-slate-900 leading-tight line-clamp-1 mb-1 group-hover:text-indigo-600 transition-colors">{product.name}</h3>
+                        <h3 className="text-lg font-display font-bold text-slate-900 leading-tight line-clamp-1 mb-1 group-hover:text-emerald-600 transition-colors">{product.name}</h3>
                         <div className="flex items-center justify-between mt-auto">
                           <div className="flex items-center gap-1.5">
                             <StarRating rating={Math.round(product.average_rating || 0)} />
@@ -1151,7 +1259,7 @@ export default function App() {
                 <img src="https://picsum.photos/seed/tech/800/800" alt="Electronics" className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110" />
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/20 to-transparent"></div>
                 <div className="absolute bottom-10 left-10">
-                  <span className="bg-indigo-500 text-white text-[10px] font-black px-4 py-1.5 rounded-full uppercase tracking-[0.2em] mb-4 inline-block">New Arrival</span>
+                  <span className="bg-emerald-500 text-white text-[10px] font-black px-4 py-1.5 rounded-full uppercase tracking-[0.2em] mb-4 inline-block">New Arrival</span>
                   <h3 className="text-4xl font-display font-black text-white mb-2">Electronics</h3>
                   <p className="text-slate-300 font-medium flex items-center gap-2 group-hover:translate-x-2 transition-transform">Explore Tech <ArrowRight size={18} /></p>
                 </div>
@@ -1202,13 +1310,13 @@ export default function App() {
             <button onClick={() => setShowFilters(!showFilters)} className={`flex items-center gap-2 mr-2 px-5 py-2.5 rounded-full text-sm font-bold transition-all duration-300 ${showFilters ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/20' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 shadow-sm'}`}>
               <Filter size={16} /> Filters
             </button>
-            <button onClick={() => setSelectedCategory(null)} className={`whitespace-nowrap px-5 py-2.5 rounded-full text-sm font-bold transition-all duration-300 ${!selectedCategory ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 shadow-sm'}`}>All Gear</button>
+            <button onClick={() => setSelectedCategory(null)} className={`whitespace-nowrap px-5 py-2.5 rounded-full text-sm font-bold transition-all duration-300 ${!selectedCategory ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 shadow-sm'}`}>All Gear</button>
             {categories.map(cat => (
-              <button key={cat} onClick={() => setSelectedCategory(cat)} className={`whitespace-nowrap px-5 py-2.5 rounded-full text-sm font-bold transition-all duration-300 ${selectedCategory === cat ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 shadow-sm'}`}>{cat}</button>
+              <button key={cat} onClick={() => setSelectedCategory(cat)} className={`whitespace-nowrap px-5 py-2.5 rounded-full text-sm font-bold transition-all duration-300 ${selectedCategory === cat ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 shadow-sm'}`}>{cat}</button>
             ))}
           </div>
           <div className="relative w-full sm:w-auto">
-            <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="w-full sm:w-auto appearance-none bg-white border border-slate-200 text-slate-700 py-2.5 pl-5 pr-12 rounded-full text-sm font-bold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 cursor-pointer shadow-sm transition-all duration-300">
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="w-full sm:w-auto appearance-none bg-white border border-slate-200 text-slate-700 py-2.5 pl-5 pr-12 rounded-full text-sm font-bold outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 cursor-pointer shadow-sm transition-all duration-300">
               <option value="featured">Featured</option>
               <option value="price-asc">Price: Low to High</option>
               <option value="price-desc">Price: High to Low</option>
@@ -1234,12 +1342,12 @@ export default function App() {
                   <div className="flex items-center gap-3">
                     <div className="relative">
                       <DollarSign size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                      <input type="number" placeholder="Min" value={minPrice} onChange={(e) => setMinPrice(e.target.value ? Number(e.target.value) : '')} className="w-28 pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all" />
+                      <input type="number" placeholder="Min" value={minPrice} onChange={(e) => setMinPrice(e.target.value ? Number(e.target.value) : '')} className="w-28 pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all" />
                     </div>
                     <span className="text-slate-300 font-bold">-</span>
                     <div className="relative">
                       <DollarSign size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                      <input type="number" placeholder="Max" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value ? Number(e.target.value) : '')} className="w-28 pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all" />
+                      <input type="number" placeholder="Max" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value ? Number(e.target.value) : '')} className="w-28 pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all" />
                     </div>
                   </div>
                 </div>
@@ -1247,12 +1355,20 @@ export default function App() {
                 <div>
                   <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Availability</label>
                   <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className={`w-12 h-7 rounded-full transition-colors duration-300 relative ${inStockOnly ? 'bg-indigo-600' : 'bg-slate-200'}`}>
+                    <div className={`w-12 h-7 rounded-full transition-colors duration-300 relative ${inStockOnly ? 'bg-emerald-600' : 'bg-slate-200'}`}>
                       <div className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-transform duration-300 shadow-sm ${inStockOnly ? 'left-6' : 'left-1'}`}></div>
                     </div>
                     <input type="checkbox" className="hidden" checked={inStockOnly} onChange={(e) => setInStockOnly(e.target.checked)} />
                     <span className="text-sm font-bold text-slate-700 group-hover:text-slate-900 transition-colors">In Stock Only</span>
                   </label>
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Tags</label>
+                  <select value={selectedTag || ''} onChange={(e) => setSelectedTag(e.target.value || null)} className="w-40 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all">
+                    <option value="">All Tags</option>
+                    {allTags.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                  </select>
                 </div>
 
                 <button 
@@ -1268,9 +1384,34 @@ export default function App() {
 
         {/* Product Grid */}
         {loadingProducts ? (
-          <div className="flex justify-center py-32"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 lg:gap-10">
+            {[...Array(8)].map((_, i) => (
+              <div key={i} className="flex flex-col gap-4">
+                <Skeleton className="h-64 w-full rounded-2xl" />
+                <Skeleton className="h-6 w-3/4 rounded-lg" />
+                <Skeleton className="h-4 w-1/2 rounded-lg" />
+              </div>
+            ))}
+          </div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-32 bg-white rounded-3xl border border-slate-100 shadow-sm"><Package size={48} className="mx-auto text-slate-300 mb-4" /><h3 className="text-lg font-bold text-slate-900">No products found</h3><button onClick={() => {setSearchQuery(''); setSelectedCategory(null);}} className="mt-4 text-indigo-600 font-bold hover:text-indigo-700">Clear filters</button></div>
+          <div className="text-center py-32 bg-white rounded-3xl border border-slate-100 shadow-sm">
+            <Package size={48} className="mx-auto text-slate-300 mb-4" />
+            <h3 className="text-lg font-bold text-slate-900">No products match your search</h3>
+            <p className="text-slate-500 mt-2">Try adjusting your filters or search query to find what you're looking for.</p>
+            <button 
+              onClick={() => {
+                setSearchQuery(''); 
+                setSelectedCategory(null);
+                setSelectedTag(null);
+                setMinPrice('');
+                setMaxPrice('');
+                setInStockOnly(false);
+              }} 
+              className="mt-6 text-emerald-600 font-bold hover:text-emerald-700 flex items-center gap-2 mx-auto"
+            >
+              <Filter size={16} /> Clear all filters
+            </button>
+          </div>
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 lg:gap-10">
@@ -1304,7 +1445,7 @@ export default function App() {
                       <span className="bg-rose-500/90 backdrop-blur-md text-[10px] font-bold px-3 py-1.5 rounded-full text-white uppercase tracking-widest shadow-sm">Sale</span>
                     )}
                     {product.id % 3 === 0 && (
-                      <span className="bg-indigo-600/90 backdrop-blur-md text-[10px] font-bold px-3 py-1.5 rounded-full text-white uppercase tracking-widest shadow-sm flex items-center gap-1 animate-pulse">
+                      <span className="bg-emerald-600/90 backdrop-blur-md text-[10px] font-bold px-3 py-1.5 rounded-full text-white uppercase tracking-widest shadow-sm flex items-center gap-1 animate-pulse">
                         <Video size={10} /> Live Shopping
                       </span>
                     )}
@@ -1318,7 +1459,7 @@ export default function App() {
                 
                 <div className="flex flex-col flex-1 px-2">
                   <div className="flex justify-between items-start mb-2">
-                    <h3 className="text-xl font-display font-bold text-slate-900 leading-tight cursor-pointer hover:text-indigo-600 line-clamp-1 transition-colors" onClick={() => { setSelectedProductId(product.id); setCurrentView('product_details'); }}>{product.name}</h3>
+                    <h3 className="text-xl font-display font-bold text-slate-900 leading-tight cursor-pointer hover:text-emerald-600 line-clamp-1 transition-colors" onClick={() => { setSelectedProductId(product.id); setCurrentView('product_details'); }}>{product.name}</h3>
                     <div className="flex flex-col items-end">
                       <p className="text-lg font-mono font-bold text-slate-900 ml-4">${product.is_sale ? product.sale_price?.toLocaleString(undefined, { minimumFractionDigits: 2 }) : product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                       {product.is_sale && <p className="text-xs font-mono font-medium text-slate-400 line-through ml-4">${product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>}
@@ -1326,7 +1467,7 @@ export default function App() {
                   </div>
                   
                   <div className="flex items-center justify-between mb-4">
-                    <button onClick={(e) => { e.stopPropagation(); setSelectedVendorId(product.vendor_id); setCurrentView('vendor_storefront'); }} className="text-xs text-slate-500 font-medium hover:text-indigo-600 transition-colors flex items-center gap-1.5">
+                    <button onClick={(e) => { e.stopPropagation(); setSelectedVendorId(product.vendor_id); setCurrentView('vendor_storefront'); }} className="text-xs text-slate-500 font-medium hover:text-emerald-600 transition-colors flex items-center gap-1.5">
                       <span className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600">{product.vendor_name?.charAt(0)}</span>
                       {product.vendor_name}
                       {product.vendor_kyc_status === 'verified' && <CheckCircle2 size={12} className="text-blue-500" />}
@@ -1380,7 +1521,7 @@ export default function App() {
                           setCurrentPage(page);
                           document.getElementById('product-grid')?.scrollIntoView({ behavior: 'smooth' });
                         }}
-                        className={`w-10 h-10 rounded-lg font-bold transition-colors ${currentPage === page ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+                        className={`w-10 h-10 rounded-lg font-bold transition-colors ${currentPage === page ? 'bg-emerald-600 text-white shadow-md' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
                       >
                         {page}
                       </button>
@@ -1417,18 +1558,36 @@ export default function App() {
     const [stats, setStats] = useState<any>(null);
 
     useEffect(() => {
-      fetch(`/api/buyer/${currentUser?.id}/dashboard`).then(res => res.json()).then(setStats);
-    }, []);
+      if (currentUser?.id) {
+        fetch(`/api/buyer/${currentUser.id}/dashboard`)
+          .then(res => res.json())
+          .then(setStats)
+          .catch(err => console.error('Error fetching buyer dashboard:', err));
+      }
+    }, [currentUser]);
 
-    if (!stats) return <div className="flex justify-center py-32"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div></div>;
+    if (!stats) return (
+      <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
+              <Skeleton className="h-14 w-14 rounded-xl" />
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-20 rounded-lg" />
+                <Skeleton className="h-6 w-32 rounded-lg" />
+              </div>
+            </div>
+          ))}
+        </div>
+        <Skeleton className="h-64 w-full rounded-2xl" />
+      </div>
+    );
 
     return (
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <h2 className="text-3xl font-bold mb-8 text-slate-900">My Dashboard</h2>
-        
+      <DashboardLayout title="My Dashboard" role="buyer">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-            <div className="p-4 bg-indigo-100 text-indigo-600 rounded-xl"><DollarSign size={24} /></div>
+            <div className="p-4 bg-emerald-100 text-emerald-600 rounded-xl"><DollarSign size={24} /></div>
             <div><p className="text-sm text-slate-500 font-bold uppercase tracking-wider">Total Spent</p><p className="text-3xl font-extrabold text-slate-900">${stats.totalSpent.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p></div>
           </div>
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
@@ -1445,7 +1604,7 @@ export default function App() {
         {stats.spendingTrend && stats.spendingTrend.length > 0 && (
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-8 p-6">
             <div className="flex items-center gap-2 mb-6">
-              <TrendingUp className="text-indigo-500" size={24} />
+              <TrendingUp className="text-emerald-500" size={24} />
               <h3 className="text-xl font-bold text-slate-900">Spending Trend</h3>
             </div>
             <div className="h-72 w-full">
@@ -1464,15 +1623,15 @@ export default function App() {
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                     formatter={(value: number) => [`$${value.toFixed(2)}`, 'Spent']}
                   />
-                  <Area type="monotone" dataKey="value" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorSpending)" />
+                  <Area type="monotone" dataKey="spent" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorSpending)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           </div>
         )}
-
+        {/* Recent Orders */}
         <h3 className="text-xl font-bold mb-4 text-slate-900">Recent Orders</h3>
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-8">
           {stats.recentOrders.length === 0 ? (
             <div className="p-8 text-center text-slate-500">No recent orders found.</div>
           ) : (
@@ -1508,7 +1667,7 @@ export default function App() {
             </table>
           )}
         </div>
-      </div>
+      </DashboardLayout>
     );
   };
 
@@ -1517,10 +1676,32 @@ export default function App() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-      fetch(`/api/users/${currentUser.id}/orders`).then(res => res.json()).then(data => { setOrders(data); setLoading(false); });
-    }, []);
+      if (currentUser?.id) {
+        orderService.fetchUserOrders(currentUser.id)
+          .then(data => { setOrders(data); setLoading(false); })
+          .catch(err => {
+            console.error('Error fetching user orders:', err);
+            setLoading(false);
+          });
+      } else {
+        setLoading(false);
+      }
+    }, [currentUser]);
 
-    if (loading) return <div className="flex justify-center py-32"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div></div>;
+    if (loading) return (
+      <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
+        {[...Array(3)].map((_, i) => (
+          <div key={i} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+            <div className="flex justify-between">
+              <Skeleton className="h-6 w-1/4 rounded-lg" />
+              <Skeleton className="h-6 w-1/6 rounded-lg" />
+            </div>
+            <Skeleton className="h-4 w-1/2 rounded-lg" />
+            <Skeleton className="h-10 w-full rounded-lg" />
+          </div>
+        ))}
+      </div>
+    );
 
     const getStatusStep = (status: string) => {
       if (status === 'Processing') return 1;
@@ -1533,7 +1714,7 @@ export default function App() {
       <div className="max-w-4xl mx-auto px-4 py-8">
         <h2 className="text-3xl font-bold mb-8 text-slate-900">My Orders</h2>
         {orders.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-3xl border border-slate-100"><Package className="mx-auto text-slate-300 mb-4" size={48} /><p className="text-slate-500 text-lg">You haven't placed any orders yet.</p><button onClick={() => setCurrentView('shop')} className="mt-6 bg-slate-900 text-white px-6 py-3 rounded-xl font-medium hover:bg-indigo-600 transition-colors">Start Shopping</button></div>
+          <div className="text-center py-20 bg-white rounded-3xl border border-slate-100"><Package className="mx-auto text-slate-300 mb-4" size={48} /><p className="text-slate-500 text-lg">You haven't placed any orders yet.</p><button onClick={() => setCurrentView('shop')} className="mt-6 bg-slate-900 text-white px-6 py-3 rounded-xl font-medium hover:bg-emerald-600 transition-colors">Start Shopping</button></div>
         ) : (
           <div className="space-y-8">
             {orders.map(order => {
@@ -1550,26 +1731,26 @@ export default function App() {
                   <div className="px-6 py-8 border-b border-slate-100">
                     <div className="relative max-w-2xl mx-auto">
                       <div className="absolute top-1/2 left-0 w-full h-1 bg-slate-200 -translate-y-1/2 rounded-full"></div>
-                      <div className="absolute top-1/2 left-0 h-1 bg-indigo-600 -translate-y-1/2 rounded-full transition-all duration-500" style={{ width: step === 1 ? '0%' : step === 2 ? '50%' : '100%' }}></div>
+                      <div className="absolute top-1/2 left-0 h-1 bg-emerald-600 -translate-y-1/2 rounded-full transition-all duration-500" style={{ width: step === 1 ? '0%' : step === 2 ? '50%' : '100%' }}></div>
                       
                       <div className="relative flex justify-between">
                         <div className="flex flex-col items-center">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center z-10 border-4 border-white ${step >= 1 ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-400'}`}>
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center z-10 border-4 border-white ${step >= 1 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-400'}`}>
                             <Box size={14} />
                           </div>
-                          <p className={`mt-2 text-xs font-bold uppercase tracking-wider ${step >= 1 ? 'text-indigo-600' : 'text-slate-400'}`}>Processing</p>
+                          <p className={`mt-2 text-xs font-bold uppercase tracking-wider ${step >= 1 ? 'text-emerald-600' : 'text-slate-400'}`}>Processing</p>
                         </div>
                         <div className="flex flex-col items-center">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center z-10 border-4 border-white ${step >= 2 ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-400'}`}>
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center z-10 border-4 border-white ${step >= 2 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-400'}`}>
                             <Truck size={14} />
                           </div>
-                          <p className={`mt-2 text-xs font-bold uppercase tracking-wider ${step >= 2 ? 'text-indigo-600' : 'text-slate-400'}`}>Shipped</p>
+                          <p className={`mt-2 text-xs font-bold uppercase tracking-wider ${step >= 2 ? 'text-emerald-600' : 'text-slate-400'}`}>Shipped</p>
                         </div>
                         <div className="flex flex-col items-center">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center z-10 border-4 border-white ${step >= 3 ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-400'}`}>
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center z-10 border-4 border-white ${step >= 3 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-400'}`}>
                             <CheckCircle2 size={14} />
                           </div>
-                          <p className={`mt-2 text-xs font-bold uppercase tracking-wider ${step >= 3 ? 'text-indigo-600' : 'text-slate-400'}`}>Delivered</p>
+                          <p className={`mt-2 text-xs font-bold uppercase tracking-wider ${step >= 3 ? 'text-emerald-600' : 'text-slate-400'}`}>Delivered</p>
                         </div>
                       </div>
                     </div>
@@ -1599,16 +1780,39 @@ export default function App() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-      fetch(`/api/wishlist/${currentUser?.id}`).then(res => res.json()).then(data => { setWishlistProducts(data); setLoading(false); });
-    }, [wishlist]); // Re-fetch when wishlist changes
+      if (currentUser?.id) {
+        fetch(`/api/wishlist/${currentUser.id}`)
+          .then(res => res.json())
+          .then(data => { setWishlistProducts(data); setLoading(false); })
+          .catch(err => {
+            console.error('Error fetching wishlist products:', err);
+            setLoading(false);
+          });
+      } else {
+        setLoading(false);
+      }
+    }, [wishlist, currentUser]); // Re-fetch when wishlist or user changes
 
-    if (loading) return <div className="flex justify-center py-32"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div></div>;
+    if (loading) return (
+      <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
+        {[...Array(3)].map((_, i) => (
+          <div key={i} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+            <div className="flex justify-between">
+              <Skeleton className="h-6 w-1/4 rounded-lg" />
+              <Skeleton className="h-6 w-1/6 rounded-lg" />
+            </div>
+            <Skeleton className="h-4 w-1/2 rounded-lg" />
+            <Skeleton className="h-10 w-full rounded-lg" />
+          </div>
+        ))}
+      </div>
+    );
 
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <h2 className="text-4xl font-display font-black mb-12 text-slate-900">My Wishlist</h2>
         {wishlistProducts.length === 0 ? (
-          <div className="text-center py-32 bg-white rounded-[2.5rem] border border-slate-100 shadow-[0_8px_40px_rgba(0,0,0,0.04)]"><Heart className="mx-auto text-slate-300 mb-6" size={64} /><p className="text-slate-500 text-xl font-medium mb-8">Your wishlist is empty.</p><button onClick={() => setCurrentView('shop')} className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-bold hover:bg-indigo-600 transition-colors shadow-lg shadow-slate-900/20">Discover Collection</button></div>
+          <div className="text-center py-32 bg-white rounded-[2.5rem] border border-slate-100 shadow-[0_8px_40px_rgba(0,0,0,0.04)]"><Heart className="mx-auto text-slate-300 mb-6" size={64} /><p className="text-slate-500 text-xl font-medium mb-8">Your wishlist is empty.</p><button onClick={() => setCurrentView('shop')} className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-bold hover:bg-emerald-600 transition-colors shadow-lg shadow-slate-900/20">Discover Collection</button></div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 lg:gap-10">
             {wishlistProducts.map(product => (
@@ -1650,7 +1854,7 @@ export default function App() {
                 
                 <div className="flex flex-col flex-1 px-2">
                   <div className="flex justify-between items-start mb-2">
-                    <h3 className="text-xl font-display font-bold text-slate-900 leading-tight cursor-pointer hover:text-indigo-600 line-clamp-1 transition-colors" onClick={() => { setSelectedProductId(product.id); setCurrentView('product_details'); }}>{product.name}</h3>
+                    <h3 className="text-xl font-display font-bold text-slate-900 leading-tight cursor-pointer hover:text-emerald-600 line-clamp-1 transition-colors" onClick={() => { setSelectedProductId(product.id); setCurrentView('product_details'); }}>{product.name}</h3>
                     <div className="flex flex-col items-end">
                       <p className="text-lg font-mono font-bold text-slate-900 ml-4">${product.is_sale ? product.sale_price?.toLocaleString(undefined, { minimumFractionDigits: 2 }) : product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                       {product.is_sale && <p className="text-xs font-mono font-medium text-slate-400 line-through ml-4">${product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>}
@@ -1658,7 +1862,7 @@ export default function App() {
                   </div>
                   
                   <div className="flex items-center justify-between mb-4">
-                    <button onClick={(e) => { e.stopPropagation(); setSelectedVendorId(product.vendor_id); setCurrentView('vendor_storefront'); }} className="text-xs text-slate-500 font-medium hover:text-indigo-600 transition-colors flex items-center gap-1.5">
+                    <button onClick={(e) => { e.stopPropagation(); setSelectedVendorId(product.vendor_id); setCurrentView('vendor_storefront'); }} className="text-xs text-slate-500 font-medium hover:text-emerald-600 transition-colors flex items-center gap-1.5">
                       <span className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600">{product.vendor_name?.charAt(0)}</span>
                       {product.vendor_name}
                       {product.vendor_kyc_status === 'verified' && <CheckCircle2 size={12} className="text-blue-500" />}
@@ -1693,19 +1897,53 @@ export default function App() {
     const [stats, setStats] = useState<any>(null);
     const [chartData, setChartData] = useState<any[]>([]);
     const [analytics, setAnalytics] = useState<any>(null);
+    const [orders, setOrders] = useState<any[]>([]);
+    const [orderFilter, setOrderFilter] = useState('all');
+    const [orderSort, setOrderSort] = useState('date-desc');
     
     useEffect(() => { 
-      fetch(`/api/vendor/${currentUser.id}/stats`).then(res => res.json()).then(setStats);
-      fetch(`/api/vendor/${currentUser.id}/chart`).then(res => res.json()).then(setChartData);
-      fetch(`/api/vendor/${currentUser.id}/analytics`).then(res => res.json()).then(setAnalytics);
-    }, []);
+      if (currentUser?.id) {
+        fetch(`/api/vendor/${currentUser.id}/stats`).then(res => res.json()).then(setStats).catch(err => console.error('Error fetching vendor stats:', err));
+        fetch(`/api/vendor/${currentUser.id}/chart`).then(res => res.json()).then(setChartData).catch(err => console.error('Error fetching vendor chart:', err));
+        fetch(`/api/vendor/${currentUser.id}/analytics`).then(res => res.json()).then(setAnalytics).catch(err => console.error('Error fetching vendor analytics:', err));
+        fetch(`/api/vendor/${currentUser.id}/orders`).then(res => res.json()).then(setOrders).catch(err => console.error('Error fetching vendor orders:', err));
+      }
+    }, [currentUser]);
 
-    if (!stats || !analytics) return <div className="flex justify-center py-32"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div></div>;
+    const filteredOrders = useMemo(() => {
+      let result = [...orders];
+      if (orderFilter !== 'all') {
+        result = result.filter(o => o.status.toLowerCase() === orderFilter.toLowerCase());
+      }
+      
+      result.sort((a, b) => {
+        const dateA = new Date(a.created_at).getTime();
+        const dateB = new Date(b.created_at).getTime();
+        return orderSort === 'date-desc' ? dateB - dateA : dateA - dateB;
+      });
+      
+      return result;
+    }, [orders, orderFilter, orderSort]);
+
+    if (!stats || !analytics) return (
+      <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
+              <Skeleton className="h-14 w-14 rounded-xl" />
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-20 rounded-lg" />
+                <Skeleton className="h-6 w-32 rounded-lg" />
+              </div>
+            </div>
+          ))}
+        </div>
+        <Skeleton className="h-96 w-full rounded-2xl" />
+      </div>
+    );
 
     return (
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <h2 className="text-3xl font-bold mb-8 text-slate-900">Store Overview</h2>
-
+      <DashboardLayout title="Store Overview" role="vendor">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
             <div className="p-4 bg-emerald-100 text-emerald-600 rounded-xl"><DollarSign size={24} /></div>
@@ -1720,41 +1958,66 @@ export default function App() {
             <div><p className="text-sm text-slate-500 font-bold uppercase tracking-wider">Recent Orders</p><p className="text-3xl font-extrabold text-slate-900">{stats.recentOrders.length}</p></div>
           </div>
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-            <div className="p-4 bg-indigo-100 text-indigo-600 rounded-xl"><Eye size={24} /></div>
+            <div className="p-4 bg-emerald-100 text-emerald-600 rounded-xl"><Eye size={24} /></div>
             <div><p className="text-sm text-slate-500 font-bold uppercase tracking-wider">Total Views</p><p className="text-3xl font-extrabold text-slate-900">{analytics.totalViews}</p></div>
           </div>
         </div>
 
         {/* Revenue Chart */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-8 p-6">
-          <div className="flex items-center gap-2 mb-6">
-            <TrendingUp className="text-emerald-500" size={24} />
-            <h3 className="text-xl font-bold text-slate-900">Revenue Trend (Last 7 Days)</h3>
-          </div>
-          <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} tickFormatter={(value) => `$${value}`} />
-                <Tooltip 
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                  formatter={(value: number) => [`$${value}`, 'Revenue']}
-                />
-                <Area type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-6">
+              <div className="flex items-center gap-2 mb-6">
+                <TrendingUp className="text-emerald-500" size={24} />
+                <h3 className="text-xl font-bold text-slate-900">Revenue Trend (Last 7 Days)</h3>
+              </div>
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} dy={10} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} tickFormatter={(value) => `$${value}`} />
+                    <Tooltip 
+                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                      formatter={(value: number) => [`$${value}`, 'Revenue']}
+                    />
+                    <Area type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Product Performance Bar Chart */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-6">
+              <div className="flex items-center gap-2 mb-6">
+                <LayoutGrid className="text-emerald-500" size={24} />
+                <h3 className="text-xl font-bold text-slate-900">Top Product Performance</h3>
+              </div>
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={stats.salesByProduct.slice(0, 5)} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} dy={10} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
+                    <Tooltip 
+                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                    />
+                    <Legend />
+                    <Bar dataKey="quantity" name="Units Sold" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="revenue" name="Revenue" fill="#10b981" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-          {/* Top Selling Products */}
+          {/* Top Selling Products Table */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="p-6 border-b border-slate-100"><h3 className="text-lg font-bold text-slate-900">Top Selling Products</h3></div>
             <table className="w-full text-left border-collapse">
@@ -1763,6 +2026,7 @@ export default function App() {
                   <th className="p-4 font-medium text-slate-600 text-sm">Product</th>
                   <th className="p-4 font-medium text-slate-600 text-sm">Sold</th>
                   <th className="p-4 font-medium text-slate-600 text-sm">Revenue</th>
+                  <th className="p-4 font-medium text-slate-600 text-sm">Rating</th>
                 </tr>
               </thead>
               <tbody>
@@ -1771,42 +2035,31 @@ export default function App() {
                     <td className="p-4 font-medium text-slate-900">{p.name}</td>
                     <td className="p-4 text-sm text-slate-600">{p.quantity}</td>
                     <td className="p-4 font-bold text-slate-900">${p.revenue.toFixed(2)}</td>
+                    <td className="p-4 text-sm text-slate-600">{p.averageRating ? p.averageRating.toFixed(1) : 'N/A'}</td>
                   </tr>
                 ))}
-                {stats.salesByProduct.length === 0 && <tr><td colSpan={3} className="p-8 text-center text-slate-500">No sales yet.</td></tr>}
+                {stats.salesByProduct.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-slate-500">No sales yet.</td></tr>}
               </tbody>
             </table>
           </div>
 
-          {/* Top Viewed Products */}
+          {/* Order History */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-slate-100"><h3 className="text-lg font-bold text-slate-900">Top Viewed Products</h3></div>
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="p-4 font-medium text-slate-600 text-sm">Product</th>
-                  <th className="p-4 font-medium text-slate-600 text-sm">Views</th>
-                  <th className="p-4 font-medium text-slate-600 text-sm">Sales</th>
-                </tr>
-              </thead>
-              <tbody>
-                {analytics.topProducts.map((p: any, i: number) => (
-                  <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
-                    <td className="p-4 font-medium text-slate-900">{p.name}</td>
-                    <td className="p-4 text-sm text-slate-600">{p.views || 0}</td>
-                    <td className="p-4 font-bold text-slate-900">{p.sales || 0}</td>
-                  </tr>
-                ))}
-                {analytics.topProducts.length === 0 && <tr><td colSpan={3} className="p-8 text-center text-slate-500">No products yet.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-8">
-          {/* Recent Orders */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-slate-100"><h3 className="text-lg font-bold text-slate-900">Recent Orders</h3></div>
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                <h3 className="text-lg font-bold text-slate-900">Recent Orders</h3>
+                <div className="flex gap-2">
+                    <select value={orderFilter} onChange={(e) => setOrderFilter(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2 py-1 outline-none">
+                        <option value="all">All Status</option>
+                        <option value="processing">Processing</option>
+                        <option value="shipped">Shipped</option>
+                        <option value="delivered">Delivered</option>
+                    </select>
+                    <select value={orderSort} onChange={(e) => setOrderSort(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-2 py-1 outline-none">
+                        <option value="date-desc">Newest</option>
+                        <option value="date-asc">Oldest</option>
+                    </select>
+                </div>
+            </div>
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200">
@@ -1817,20 +2070,61 @@ export default function App() {
                 </tr>
               </thead>
               <tbody>
-                {stats.recentOrders.map((order: any) => (
-                  <tr key={order.id} className="border-b border-slate-100 hover:bg-slate-50">
-                    <td className="p-4 font-mono text-sm">#{order.id}</td>
-                    <td className="p-4 text-sm text-slate-600">{order.buyer_name}</td>
-                    <td className="p-4 text-sm text-slate-500">{new Date(order.created_at).toLocaleDateString()}</td>
-                    <td className="p-4"><span className={`px-2 py-1 rounded-full text-xs font-bold ${order.status === 'Processing' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>{order.status}</span></td>
+                {filteredOrders.map((o: any, i: number) => (
+                  <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
+                    <td className="p-4 font-medium text-slate-900">#{o.id}</td>
+                    <td className="p-4 text-sm text-slate-600">{o.buyer_name}</td>
+                    <td className="p-4 text-sm text-slate-600">{new Date(o.created_at).toLocaleDateString()}</td>
+                    <td className="p-4 text-sm font-bold text-slate-900 capitalize">{o.status}</td>
                   </tr>
                 ))}
-                {stats.recentOrders.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-slate-500">No orders yet.</td></tr>}
+                {filteredOrders.length === 0 && <tr><td colSpan={4} className="p-8 text-center text-slate-500">No orders found.</td></tr>}
               </tbody>
             </table>
           </div>
         </div>
-      </div>
+
+        <div className="grid grid-cols-1 gap-8">
+          {/* Top Viewed Products */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-slate-100 flex items-center gap-2">
+              <Eye className="text-emerald-500" size={20} />
+              <h3 className="text-lg font-bold text-slate-900">Top Viewed Products</h3>
+            </div>
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  <th className="p-4 font-medium text-slate-600 text-sm">Product</th>
+                  <th className="p-4 font-medium text-slate-600 text-sm">Views</th>
+                  <th className="p-4 font-medium text-slate-600 text-sm">Conversion Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {analytics.topProducts.map((p: any, i: number) => (
+                  <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
+                    <td className="p-4 font-medium text-slate-900">{p.name}</td>
+                    <td className="p-4 text-sm text-slate-600 font-mono">{p.views.toLocaleString()}</td>
+                    <td className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-emerald-500 rounded-full" 
+                            style={{ width: `${Math.min((p.sales / (p.views || 1)) * 100, 100)}%` }}
+                          ></div>
+                        </div>
+                        <span className="text-xs font-bold text-slate-600 w-12 text-right">
+                          {((p.sales / (p.views || 1)) * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {analytics.topProducts.length === 0 && <tr><td colSpan={3} className="p-8 text-center text-slate-500">No data available.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </DashboardLayout>
     );
   };
 
@@ -1855,9 +2149,11 @@ export default function App() {
     const [aiLength, setAiLength] = useState('medium');
 
     const fetchMyProducts = () => {
-      fetch(`/api/vendor/${currentUser?.id}/products`).then(res => res.json()).then(setMyProducts);
+      if (currentUser?.id) {
+        fetch(`/api/vendor/${currentUser.id}/products`).then(res => res.json()).then(setMyProducts);
+      }
     };
-    useEffect(() => { fetchMyProducts(); }, []);
+    useEffect(() => { fetchMyProducts(); }, [currentUser]);
 
     useEffect(() => {
       if (editingProduct) {
@@ -1945,8 +2241,26 @@ export default function App() {
         is_sale: formData.get('is_sale') === 'on',
         sale_price: Number(formData.get('sale_price'))
       };
-      const res = await fetch(`/api/vendor/${currentUser?.id}/products`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-      if (res.ok) { showToast('Product added successfully!'); setIsAdding(false); fetchMyProducts(); }
+      
+      try {
+        const res = await fetch(`/api/vendor/${currentUser?.id}/products`, { 
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' }, 
+          body: JSON.stringify(data) 
+        });
+        
+        if (res.ok) { 
+          showToast('Product added successfully!', 'success'); 
+          setIsAdding(false); 
+          fetchMyProducts(); 
+        } else {
+          const errorData = await res.json();
+          showToast(errorData.error || 'Failed to add product', 'error');
+        }
+      } catch (error) {
+        console.error('Error adding product:', error);
+        showToast('An unexpected error occurred', 'error');
+      }
     };
 
     const handleEditProduct = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -2101,7 +2415,7 @@ export default function App() {
                         handleAIGenerate(input.value);
                       }}
                       disabled={isGeneratingAI}
-                      className="bg-indigo-600 text-white px-3 py-1 rounded-md text-xs font-bold flex items-center gap-1 hover:bg-indigo-700 transition-colors disabled:opacity-50 ml-1"
+                      className="bg-emerald-600 text-white px-3 py-1 rounded-md text-xs font-bold flex items-center gap-1 hover:bg-emerald-700 transition-colors disabled:opacity-50 ml-1"
                     >
                       {isGeneratingAI ? <Sparkles className="animate-pulse" size={12} /> : <Sparkles size={12} />}
                       Generate
@@ -2113,7 +2427,7 @@ export default function App() {
                   <div className="flex flex-wrap gap-2 mt-2">
                     <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mr-1">Keywords:</span>
                     {aiKeywords.map((kw, i) => (
-                      <span key={i} className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded-md text-xs font-medium border border-indigo-100">{kw}</span>
+                      <span key={i} className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded-md text-xs font-medium border border-emerald-100">{kw}</span>
                     ))}
                   </div>
                 )}
@@ -2123,11 +2437,16 @@ export default function App() {
           </div>
         )}
 
+        {myProducts.length === 0 && (
+          <div className="text-center py-12 bg-white rounded-2xl border border-slate-200">
+            <p className="text-slate-500">No products found. Add your first product!</p>
+          </div>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-10">
           {myProducts.map(p => (
             <div key={p.id} className="group flex flex-col bg-white rounded-[2rem] overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_40px_rgba(0,0,0,0.08)] transition-all duration-500 border border-slate-100 relative">
               <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10">
-                <button onClick={() => { setEditingProduct(p); setIsAdding(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="p-2.5 bg-white/90 backdrop-blur-md rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.08)] hover:bg-white hover:text-indigo-600 hover:scale-110 transition-all duration-300"><Settings size={16} /></button>
+                <button onClick={() => { setEditingProduct(p); setIsAdding(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="p-2.5 bg-white/90 backdrop-blur-md rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.08)] hover:bg-white hover:text-emerald-600 hover:scale-110 transition-all duration-300"><Settings size={16} /></button>
                 <button onClick={() => handleDeleteProduct(p.id)} className="p-2.5 bg-white/90 backdrop-blur-md rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.08)] hover:bg-white hover:text-rose-600 hover:scale-110 transition-all duration-300"><Trash2 size={16} /></button>
               </div>
               <div className="relative aspect-[4/5] overflow-hidden bg-slate-50">
@@ -2199,7 +2518,20 @@ export default function App() {
       fetchVendorData();
     }, [selectedVendorId]);
 
-    if (loading) return <div className="flex justify-center py-32"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div></div>;
+    if (loading) return (
+      <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
+        <Skeleton className="h-64 w-full rounded-2xl" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="flex flex-col gap-4">
+              <Skeleton className="h-64 w-full rounded-2xl" />
+              <Skeleton className="h-6 w-3/4 rounded-lg" />
+              <Skeleton className="h-4 w-1/2 rounded-lg" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
     if (!vendor) return <div className="text-center py-32 text-slate-500">Vendor not found.</div>;
 
     return (
@@ -2209,7 +2541,7 @@ export default function App() {
         </button>
 
         <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden mb-12">
-          <div className="h-48 bg-gradient-to-r from-indigo-600 to-purple-600 relative">
+          <div className="h-48 bg-gradient-to-r from-emerald-600 to-purple-600 relative">
             <div className="absolute -bottom-12 left-8">
               <img src={vendor.avatar || "https://api.dicebear.com/7.x/avataaars/svg?seed=Vendor"} alt={vendor.name} className="w-24 h-24 rounded-full border-4 border-white bg-white shadow-md" />
             </div>
@@ -2237,7 +2569,7 @@ export default function App() {
               {currentUser && currentUser.id !== vendor.id && (
                 <button 
                   onClick={() => { setActiveChatUserId(vendor.id); setIsChatOpen(true); }}
-                  className="ml-auto flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors shadow-md"
+                  className="ml-auto flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors shadow-md"
                 >
                   <MessageSquare size={18} /> Chat with Vendor
                 </button>
@@ -2264,7 +2596,7 @@ export default function App() {
                   <div className="flex justify-between items-start mb-1">
                     <h3 className="text-lg font-bold text-slate-900 leading-tight line-clamp-1">{p.name}</h3>
                     <div className="flex flex-col items-end ml-4">
-                      <p className="text-lg font-bold text-indigo-600">${p.is_sale ? p.sale_price?.toFixed(2) : p.price.toFixed(2)}</p>
+                      <p className="text-lg font-bold text-emerald-600">${p.is_sale ? p.sale_price?.toFixed(2) : p.price.toFixed(2)}</p>
                       {p.is_sale && <p className="text-xs font-medium text-slate-400 line-through">${p.price.toFixed(2)}</p>}
                     </div>
                   </div>
@@ -2276,7 +2608,7 @@ export default function App() {
                   <button 
                     onClick={(e) => { e.stopPropagation(); addToCart(p); setIsCartOpen(true); }} 
                     disabled={p.stock === 0}
-                    className={`mt-auto w-full font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-md ${p.stock > 0 ? 'bg-slate-900 text-white hover:bg-indigo-600' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+                    className={`mt-auto w-full font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-md ${p.stock > 0 ? 'bg-slate-900 text-white hover:bg-emerald-600' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
                   >
                     <ShoppingCart size={18} /> {p.stock > 0 ? 'Add to Cart' : 'Out of Stock'}
                   </button>
@@ -2298,44 +2630,67 @@ export default function App() {
     const [kycRequests, setKycRequests] = useState<any[]>([]);
 
     useEffect(() => { 
-      fetch('/api/admin/dashboard').then(res => res.json()).then(setStats); 
-      fetch('/api/admin/chart').then(res => res.json()).then(setChartData);
-      fetch('/api/admin/kyc').then(res => res.json()).then(setKycRequests);
+      fetch('/api/admin/dashboard').then(res => res.json()).then(setStats).catch(err => console.error('Error fetching admin dashboard:', err)); 
+      fetch('/api/admin/chart').then(res => res.json()).then(setChartData).catch(err => console.error('Error fetching admin chart:', err));
+      fetch('/api/admin/kyc').then(res => res.json()).then(setKycRequests).catch(err => console.error('Error fetching admin kyc:', err));
     }, []);
 
     const updateStatus = async (id: number, status: string) => {
-      await fetch(`/api/admin/orders/${id}/status`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
-      setStats({ ...stats, recentOrders: stats.recentOrders.map((o: any) => o.id === id ? { ...o, status } : o) });
-      showToast('Order status updated');
-    };
-
-    const handleKycAction = async (userId: number, status: 'verified' | 'rejected') => {
-      const res = await fetch(`/api/admin/kyc/${userId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status })
-      });
-      if (res.ok) {
-        setKycRequests(prev => prev.map(u => u.id === userId ? { ...u, kyc_status: status } : u));
-        showToast(`User ${status} successfully`);
-      } else {
-        showToast('Failed to update status', 'error');
+      try {
+        await orderService.updateOrderStatus(id, status);
+        setStats({ ...stats, recentOrders: stats.recentOrders.map((o: any) => o.id === id ? { ...o, status } : o) });
+        showToast('Order status updated');
+      } catch (err) {
+        console.error('Error updating order status:', err);
+        showToast('Failed to update order status', 'error');
       }
     };
 
-    if (!stats) return <div className="flex justify-center py-32"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-rose-600"></div></div>;
+    const handleKycAction = async (userId: number, status: 'verified' | 'rejected') => {
+      try {
+        const res = await fetch(`/api/admin/kyc/${userId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status })
+        });
+        if (res.ok) {
+          setKycRequests(prev => prev.map(u => u.id === userId ? { ...u, kyc_status: status } : u));
+          showToast(`User ${status} successfully`);
+        } else {
+          showToast('Failed to update status', 'error');
+        }
+      } catch (err) {
+        console.error('Error handling KYC action:', err);
+        showToast('Network error', 'error');
+      }
+    };
+
+    if (!stats) return (
+      <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
+              <Skeleton className="h-14 w-14 rounded-xl" />
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-20 rounded-lg" />
+                <Skeleton className="h-6 w-32 rounded-lg" />
+              </div>
+            </div>
+          ))}
+        </div>
+        <Skeleton className="h-96 w-full rounded-2xl" />
+      </div>
+    );
 
     return (
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <h2 className="text-3xl font-bold mb-8 text-slate-900">Platform Overview</h2>
-        
+      <DashboardLayout title="Platform Overview" role="admin">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
             <div className="p-4 bg-rose-100 text-rose-600 rounded-xl"><DollarSign size={24} /></div>
             <div><p className="text-sm text-slate-500 font-bold uppercase tracking-wider">Total Platform Revenue</p><p className="text-3xl font-extrabold text-slate-900">${stats.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p></div>
           </div>
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-            <div className="p-4 bg-indigo-100 text-indigo-600 rounded-xl"><Users size={24} /></div>
+            <div className="p-4 bg-emerald-100 text-emerald-600 rounded-xl"><Users size={24} /></div>
             <div><p className="text-sm text-slate-500 font-bold uppercase tracking-wider">Total Registered Users</p><p className="text-3xl font-extrabold text-slate-900">{stats.totalUsers}</p></div>
           </div>
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
@@ -2374,7 +2729,7 @@ export default function App() {
                         </div>
                       </td>
                       <td className="p-4">
-                        <a href={user.kyc_document} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline flex items-center gap-1 font-medium text-sm">
+                        <a href={user.kyc_document} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline flex items-center gap-1 font-medium text-sm">
                           <ExternalLink size={14} /> View Document
                         </a>
                       </td>
@@ -2457,7 +2812,7 @@ export default function App() {
             </tbody>
           </table>
         </div>
-      </div>
+      </DashboardLayout>
     );
   };
 
@@ -2495,7 +2850,7 @@ export default function App() {
                   <td className="p-4 font-medium text-slate-900">{u.name}</td>
                   <td className="p-4 text-sm text-slate-600">{u.email}</td>
                   <td className="p-4">
-                    <span className={`px-2 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${u.role === 'admin' ? 'bg-rose-100 text-rose-700' : u.role === 'vendor' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}>{u.role}</span>
+                    <span className={`px-2 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${u.role === 'admin' ? 'bg-rose-100 text-rose-700' : u.role === 'vendor' ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-100 text-emerald-700'}`}>{u.role}</span>
                   </td>
                   <td className="p-4 text-sm text-slate-500">{new Date(u.created_at).toLocaleDateString()}</td>
                   <td className="p-4">
@@ -2580,7 +2935,7 @@ export default function App() {
                       </td>
                       <td className="p-4 text-sm text-slate-600">{u.email}</td>
                       <td className="p-4 text-sm">
-                        <a href={u.kyc_document} target="_blank" rel="noreferrer" className="text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1">
+                        <a href={u.kyc_document} target="_blank" rel="noreferrer" className="text-emerald-600 hover:text-emerald-800 font-bold flex items-center gap-1">
                           <ExternalLink size={14} /> View ID
                         </a>
                       </td>
@@ -2627,7 +2982,7 @@ export default function App() {
                       </span>
                     </td>
                     <td className="p-4 text-sm">
-                      <a href={u.kyc_document} target="_blank" rel="noreferrer" className="text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1">
+                      <a href={u.kyc_document} target="_blank" rel="noreferrer" className="text-emerald-600 hover:text-emerald-800 font-bold flex items-center gap-1">
                         <ExternalLink size={14} /> View ID
                       </a>
                     </td>
@@ -2712,7 +3067,7 @@ export default function App() {
           <h2 className="text-3xl font-bold text-slate-900">Hero Promotions</h2>
           <button 
             onClick={() => setIsAdding(!isAdding)}
-            className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-lg"
+            className="bg-emerald-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-emerald-700 transition-colors flex items-center gap-2 shadow-lg"
           >
             {isAdding ? <X size={20} /> : <Plus size={20} />} {isAdding ? 'Cancel' : 'Add Promotion'}
           </button>
@@ -2739,7 +3094,7 @@ export default function App() {
                           image: product ? product.image : newPromo.image
                         });
                       }}
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
                     >
                       <option value="">None (Generic Promotion)</option>
                       {products.map(p => <option key={p.id} value={p.id}>{p.name} (${p.price})</option>)}
@@ -2752,7 +3107,7 @@ export default function App() {
                       value={newPromo.subtitle} 
                       onChange={e => setNewPromo({...newPromo, subtitle: e.target.value})}
                       placeholder="e.g. New Collection"
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
                     />
                   </div>
                 </div>
@@ -2765,7 +3120,7 @@ export default function App() {
                     value={newPromo.title} 
                     onChange={e => setNewPromo({...newPromo, title: e.target.value})}
                     placeholder="e.g. Discover the Extraordinary."
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
                   />
                 </div>
 
@@ -2777,7 +3132,7 @@ export default function App() {
                     value={newPromo.image} 
                     onChange={e => setNewPromo({...newPromo, image: e.target.value})}
                     placeholder="https://picsum.photos/seed/promo/1920/600"
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
                   />
                 </div>
 
@@ -2788,11 +3143,11 @@ export default function App() {
                     value={newPromo.description} 
                     onChange={e => setNewPromo({...newPromo, description: e.target.value})}
                     placeholder="Explore our curated selection..."
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none h-32 transition-all"
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none h-32 transition-all"
                   />
                 </div>
 
-                <button type="submit" className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold hover:bg-indigo-600 transition-all shadow-lg shadow-indigo-200">
+                <button type="submit" className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-200">
                   Save Promotion
                 </button>
               </form>
@@ -2804,8 +3159,8 @@ export default function App() {
                   <div className="absolute inset-0 flex flex-col md:flex-row">
                     <div className="relative z-10 p-8 md:w-1/2 h-full flex flex-col justify-center bg-slate-900/95 backdrop-blur-3xl border-r border-white/10">
                       {newPromo.subtitle && (
-                        <span className="inline-flex items-center gap-2 py-1.5 px-4 rounded-full bg-indigo-500/10 text-indigo-400 text-[10px] font-bold tracking-[0.2em] uppercase mb-6 border border-indigo-500/20 w-fit">
-                          <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                        <span className="inline-flex items-center gap-2 py-1.5 px-4 rounded-full bg-emerald-500/10 text-emerald-400 text-[10px] font-bold tracking-[0.2em] uppercase mb-6 border border-emerald-500/20 w-fit">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                           {newPromo.subtitle}
                         </span>
                       )}
@@ -2850,8 +3205,8 @@ export default function App() {
 
                 <div className="absolute bottom-6 left-8 right-8">
                   {promo.subtitle && (
-                    <span className="inline-flex items-center gap-2 py-1.5 px-4 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-bold tracking-[0.2em] uppercase mb-3 border border-indigo-500/30 backdrop-blur-md">
-                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                    <span className="inline-flex items-center gap-2 py-1.5 px-4 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold tracking-[0.2em] uppercase mb-3 border border-emerald-500/30 backdrop-blur-md">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                       {promo.subtitle}
                     </span>
                   )}
@@ -2862,7 +3217,7 @@ export default function App() {
                 <p className="text-slate-500 text-base line-clamp-2 mb-8 leading-relaxed flex-1">{promo.description}</p>
                 <div className="flex items-center justify-between mt-auto pt-6 border-t border-slate-100">
                   {promo.product_name ? (
-                    <div className="flex items-center gap-2 text-xs font-bold text-indigo-600 bg-indigo-50 px-4 py-2 rounded-full border border-indigo-100">
+                    <div className="flex items-center gap-2 text-xs font-bold text-emerald-600 bg-emerald-50 px-4 py-2 rounded-full border border-emerald-100">
                       <Tag size={14} /> Linked: {promo.product_name}
                     </div>
                   ) : (
@@ -2948,7 +3303,7 @@ export default function App() {
           <h2 className="text-3xl font-bold text-slate-900">Product Management</h2>
           {selectedProducts.size > 0 && (
             <div className="flex gap-2">
-              <button onClick={() => handleBulkFeature(true)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">Feature Selected</button>
+              <button onClick={() => handleBulkFeature(true)} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors">Feature Selected</button>
               <button onClick={() => handleBulkFeature(false)} className="bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-300 transition-colors">Unfeature Selected</button>
               <button onClick={handleBulkDelete} className="bg-rose-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-rose-700 transition-colors">Delete Selected</button>
             </div>
@@ -2959,7 +3314,7 @@ export default function App() {
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
                 <th className="p-4 w-10">
-                  <input type="checkbox" checked={products.length > 0 && selectedProducts.size === products.length} onChange={toggleSelectAll} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                  <input type="checkbox" checked={products.length > 0 && selectedProducts.size === products.length} onChange={toggleSelectAll} className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
                 </th>
                 <th className="p-4 font-medium text-slate-600 text-sm">ID</th>
                 <th className="p-4 font-medium text-slate-600 text-sm">Product</th>
@@ -2972,9 +3327,9 @@ export default function App() {
             </thead>
             <tbody>
               {products.map((p: any) => (
-                <tr key={p.id} className={`border-b border-slate-100 hover:bg-slate-50 ${selectedProducts.has(p.id) ? 'bg-indigo-50' : ''}`}>
+                <tr key={p.id} className={`border-b border-slate-100 hover:bg-slate-50 ${selectedProducts.has(p.id) ? 'bg-emerald-50' : ''}`}>
                   <td className="p-4">
-                    <input type="checkbox" checked={selectedProducts.has(p.id)} onChange={() => toggleSelect(p.id)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                    <input type="checkbox" checked={selectedProducts.has(p.id)} onChange={() => toggleSelect(p.id)} className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
                   </td>
                   <td className="p-4 font-mono text-sm">{p.id}</td>
                   <td className="p-4 flex items-center gap-3">
@@ -3005,26 +3360,22 @@ export default function App() {
     const [loading, setLoading] = useState(true);
 
     const fetchOrders = () => {
-      fetch(`/api/vendor/${currentUser?.id}/orders`)
-        .then(res => res.json())
-        .then(data => { setOrders(data); setLoading(false); });
+      orderService.fetchVendorOrders(currentUser!.id).then(data => { setOrders(data); setLoading(false); });
     };
 
     useEffect(() => { fetchOrders(); }, []);
 
     const handleStatusUpdate = async (orderId: number, status: string) => {
-      const res = await fetch(`/api/admin/orders/${orderId}/status`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status })
-      });
-      if (res.ok) {
+      try {
+        await orderService.updateOrderStatus(orderId, status);
         showToast('Order status updated');
         fetchOrders();
+      } catch (error) {
+        showToast('Failed to update order status');
       }
     };
 
-    if (loading) return <div className="flex justify-center py-32"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div></div>;
+    if (loading) return <div className="flex justify-center py-32"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div></div>;
 
     return (
       <div className="max-w-7xl mx-auto px-4 py-8">
@@ -3043,8 +3394,17 @@ export default function App() {
                     <p className="text-sm text-slate-500 mb-1 font-medium uppercase tracking-wider">Status</p>
                     <select 
                       value={order.status} 
-                      onChange={(e) => handleStatusUpdate(order.id, e.target.value)}
-                      className={`text-sm font-bold px-3 py-1.5 rounded-full border-0 focus:ring-2 focus:ring-indigo-500 cursor-pointer ${order.status === 'Processing' ? 'bg-amber-100 text-amber-800' : order.status === 'Shipped' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}`}
+                      onChange={(e) => {
+                        const newStatus = e.target.value;
+                        if (newStatus === 'Delivered') {
+                          if (window.confirm('Are you sure you want to mark this task as complete?')) {
+                            handleStatusUpdate(order.id, newStatus);
+                          }
+                        } else {
+                          handleStatusUpdate(order.id, newStatus);
+                        }
+                      }}
+                      className={`text-sm font-bold px-3 py-1.5 rounded-full border-0 focus:ring-2 focus:ring-emerald-500 cursor-pointer ${order.status === 'Processing' ? 'bg-amber-100 text-amber-800' : order.status === 'Shipped' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}`}
                     >
                       <option value="Processing">Processing</option>
                       <option value="Shipped">Shipped</option>
@@ -3091,26 +3451,22 @@ export default function App() {
     const [loading, setLoading] = useState(true);
 
     const fetchOrders = () => {
-      fetch('/api/admin/orders')
-        .then(res => res.json())
-        .then(data => { setOrders(data); setLoading(false); });
+      orderService.fetchAdminOrders().then(data => { setOrders(data); setLoading(false); });
     };
 
     useEffect(() => { fetchOrders(); }, []);
 
     const handleStatusUpdate = async (orderId: number, status: string) => {
-      const res = await fetch(`/api/admin/orders/${orderId}/status`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status })
-      });
-      if (res.ok) {
+      try {
+        await orderService.updateOrderStatus(orderId, status);
         showToast('Order status updated');
         fetchOrders();
+      } catch (error) {
+        showToast('Failed to update order status');
       }
     };
 
-    if (loading) return <div className="flex justify-center py-32"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div></div>;
+    if (loading) return <div className="flex justify-center py-32"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div></div>;
 
     return (
       <div className="max-w-7xl mx-auto px-4 py-8">
@@ -3139,8 +3495,17 @@ export default function App() {
                   <td className="p-4">
                     <select 
                       value={order.status} 
-                      onChange={(e) => handleStatusUpdate(order.id, e.target.value)}
-                      className={`text-xs font-bold px-3 py-1.5 rounded-full border-0 focus:ring-2 focus:ring-indigo-500 cursor-pointer ${order.status === 'Processing' ? 'bg-amber-100 text-amber-800' : order.status === 'Shipped' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}`}
+                      onChange={(e) => {
+                        const newStatus = e.target.value;
+                        if (newStatus === 'Delivered') {
+                          if (window.confirm('Are you sure you want to mark this task as complete?')) {
+                            handleStatusUpdate(order.id, newStatus);
+                          }
+                        } else {
+                          handleStatusUpdate(order.id, newStatus);
+                        }
+                      }}
+                      className={`text-xs font-bold px-3 py-1.5 rounded-full border-0 focus:ring-2 focus:ring-emerald-500 cursor-pointer ${order.status === 'Processing' ? 'bg-amber-100 text-amber-800' : order.status === 'Shipped' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}`}
                     >
                       <option value="Processing">Processing</option>
                       <option value="Shipped">Shipped</option>
@@ -3160,6 +3525,7 @@ export default function App() {
   const ProductDetailView = () => {
     const [product, setProduct] = useState<Product | null>(null);
     const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
+    const [reviews, setReviews] = useState<Review[]>([]);
     const [loading, setLoading] = useState(true);
     const [tags, setTags] = useState<any[]>([]);
     const [newTag, setNewTag] = useState('');
@@ -3206,6 +3572,11 @@ export default function App() {
           .then(res => res.json())
           .then(setRelatedProducts);
 
+        // Fetch reviews
+        fetch(`/api/products/${selectedProductId}/reviews`)
+          .then(res => res.json())
+          .then(setReviews);
+
         // Fetch tags
         fetch(`/api/products/${selectedProductId}/tags`).then(res => res.json()).then(setTags);
         fetch('/api/tags').then(res => res.json()).then(setAllTags);
@@ -3249,12 +3620,21 @@ export default function App() {
     };
 
     const [activeImage, setActiveImage] = useState<string | null>(null);
+    const [recentlyViewedProducts, setRecentlyViewedProducts] = useState<Product[]>([]);
+    const [isZoomed, setIsZoomed] = useState(false);
+    const [zoomPosition, setZoomPosition] = useState({ x: 50, y: 50 });
 
     useEffect(() => {
       if (product) setActiveImage(product.image);
     }, [product]);
 
-    const [recentlyViewedProducts, setRecentlyViewedProducts] = useState<Product[]>([]);
+    const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!isZoomed) return;
+      const { left, top, width, height } = e.currentTarget.getBoundingClientRect();
+      const x = ((e.clientX - left) / width) * 100;
+      const y = ((e.clientY - top) / height) * 100;
+      setZoomPosition({ x, y });
+    };
 
     useEffect(() => {
       const rvIds = JSON.parse(localStorage.getItem('moonshop_recently_viewed') || '[]');
@@ -3268,7 +3648,7 @@ export default function App() {
       }
     }, [selectedProductId]);
 
-    if (loading) return <div className="flex justify-center py-32"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div></div>;
+    if (loading) return <div className="flex justify-center py-32"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div></div>;
     if (!product) return <div className="text-center py-32 text-slate-500">Product not found.</div>;
 
     const images = [product.image, product.image2, product.image3].filter(Boolean) as string[];
@@ -3281,22 +3661,30 @@ export default function App() {
         
         <div className="bg-white rounded-[2.5rem] shadow-[0_8px_40px_rgba(0,0,0,0.04)] border border-slate-100 overflow-hidden flex flex-col md:flex-row mb-16">
           <div className="md:w-1/2 bg-slate-50 relative flex flex-col border-r border-slate-100">
-            <div className="relative aspect-[4/5] overflow-hidden bg-white group">
+            <div className="relative aspect-[4/5] overflow-hidden bg-white group cursor-zoom-in" 
+                 onClick={() => setIsZoomed(!isZoomed)}
+                 onMouseEnter={() => setIsZoomed(true)}
+                 onMouseMove={handleMouseMove}
+                 onMouseLeave={() => setIsZoomed(false)}
+            >
               <AnimatePresence mode="wait">
                 <motion.img 
                   key={activeImage}
                   initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
+                  animate={{ opacity: 1, scale: isZoomed ? 2 : 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.3 }}
                   src={activeImage || product.image} 
                   alt={product.name} 
-                  className="w-full h-full object-cover object-center transition-transform duration-1000 group-hover:scale-105" 
+                  className="w-full h-full object-contain object-center" 
+                  style={{
+                    transformOrigin: isZoomed ? `${zoomPosition.x}% ${zoomPosition.y}%` : 'center'
+                  }}
                   referrerPolicy="no-referrer" 
                 />
               </AnimatePresence>
               <button 
-                onClick={(e) => toggleWishlist(e, product.id)} 
+                onClick={(e) => { e.stopPropagation(); toggleWishlist(e, product.id); }} 
                 className="absolute top-6 right-6 z-10 p-3 bg-white/90 backdrop-blur-md rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.08)] hover:bg-white hover:scale-110 transition-all duration-300"
               >
                 <Heart size={20} className={wishlist.includes(product.id) ? 'fill-rose-500 text-rose-500' : 'text-slate-400'} />
@@ -3309,7 +3697,7 @@ export default function App() {
                   <button 
                     key={idx} 
                     onClick={() => setActiveImage(img)}
-                    className={`relative w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border-2 transition-all duration-300 shrink-0 snap-start outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 ${activeImage === img ? 'border-indigo-600 shadow-lg scale-105 ring-2 ring-indigo-100' : 'border-transparent opacity-70 hover:opacity-100 hover:scale-105'}`}
+                    className={`relative w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border-2 transition-all duration-300 shrink-0 snap-start outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 ${activeImage === img ? 'border-emerald-600 shadow-lg scale-105 ring-2 ring-emerald-100' : 'border-transparent opacity-70 hover:opacity-100 hover:scale-105'}`}
                   >
                     <img src={img} alt={`Product view ${idx + 1}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   </button>
@@ -3319,7 +3707,7 @@ export default function App() {
 
             {product.video_url && (
               <div className="p-8 bg-slate-900">
-                <p className="text-white text-xs font-bold uppercase tracking-widest mb-4 flex items-center gap-2"><Video size={16} className="text-indigo-400" /> Product Video</p>
+                <p className="text-white text-xs font-bold uppercase tracking-widest mb-4 flex items-center gap-2"><Video size={16} className="text-emerald-400" /> Product Video</p>
                 <video src={product.video_url} controls className="w-full rounded-2xl border border-slate-700 bg-black aspect-video shadow-2xl" />
               </div>
             )}
@@ -3350,7 +3738,7 @@ export default function App() {
               ) : (
                 <div className="flex flex-col items-end">
                   <span className="px-4 py-2 bg-rose-50 text-rose-600 text-[10px] font-bold uppercase tracking-[0.2em] rounded-full border border-rose-100 mb-2">Out of Stock</span>
-                  <button onClick={() => setShowStockAlert(true)} className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 underline"><Bell size={14} /> Notify me when available</button>
+                  <button onClick={() => setShowStockAlert(true)} className="text-xs font-bold text-emerald-600 hover:text-emerald-800 flex items-center gap-1 underline"><Bell size={14} /> Notify me when available</button>
                 </div>
               )}
             </div>
@@ -3365,7 +3753,7 @@ export default function App() {
                             placeholder="Enter your email" 
                             value={stockAlertEmail} 
                             onChange={(e) => setStockAlertEmail(e.target.value)}
-                            className="flex-1 px-4 py-2 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                            className="flex-1 px-4 py-2 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
                         />
                         <button type="submit" className="bg-slate-900 text-white px-4 py-2 rounded-xl font-bold text-xs hover:bg-slate-800">Notify Me</button>
                     </div>
@@ -3390,7 +3778,18 @@ export default function App() {
               <div className="flex flex-wrap gap-2 items-center">
                 <Tag size={16} className="text-slate-400" />
                 {tags.map(tag => (
-                    <span key={tag.id} className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border border-slate-200">#{tag.name}</span>
+                    <span key={tag.id} className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border border-slate-200 flex items-center gap-1">
+                        #{tag.name}
+                        {(currentUser?.role === 'admin' || currentUser?.id === product.vendor_id) && (
+                            <button onClick={async () => {
+                                const res = await fetch(`/api/products/${selectedProductId}/tags/${tag.id}`, { method: 'DELETE' });
+                                if (res.ok) {
+                                    setTags(tags.filter(t => t.id !== tag.id));
+                                    showToast('Tag removed successfully!');
+                                }
+                            }} className="text-slate-400 hover:text-rose-500"><X size={12} /></button>
+                        )}
+                    </span>
                 ))}
                 {showTagInput ? (
                     <div className="relative flex items-center gap-2">
@@ -3401,7 +3800,7 @@ export default function App() {
                             onChange={(e) => setNewTag(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleAddTag()}
                             placeholder="Add tag..." 
-                            className="bg-white border border-slate-300 rounded-full px-3 py-1 text-xs outline-none focus:border-indigo-500 w-32"
+                            className="bg-white border border-slate-300 rounded-full px-3 py-1 text-xs outline-none focus:border-emerald-500 w-32"
                             list="tag-suggestions"
                         />
                         <datalist id="tag-suggestions">
@@ -3411,7 +3810,7 @@ export default function App() {
                         <button onClick={() => setShowTagInput(false)} className="text-rose-500 hover:text-rose-600"><X size={16} /></button>
                     </div>
                 ) : (
-                    <button onClick={() => setShowTagInput(true)} className="text-slate-400 hover:text-indigo-600 transition-colors"><PlusCircle size={20} /></button>
+                    <button onClick={() => setShowTagInput(true)} className="text-slate-400 hover:text-emerald-600 transition-colors"><PlusCircle size={20} /></button>
                 )}
               </div>
             </div>
@@ -3419,7 +3818,7 @@ export default function App() {
             <div className="mb-12 p-8 rounded-3xl bg-slate-50 border border-slate-100 flex items-center justify-between group cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => { setSelectedVendorId(product.vendor_id); setCurrentView('vendor_storefront'); }}>
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">Sold By</p>
-                <div className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors flex items-center gap-2 text-xl">
+                <div className="font-bold text-slate-900 group-hover:text-emerald-600 transition-colors flex items-center gap-2 text-xl">
                   {product.vendor_name}
                   {product.vendor_kyc_status === 'verified' && <CheckCircle2 size={20} className="text-blue-500" />}
                 </div>
@@ -3440,7 +3839,7 @@ export default function App() {
               <button 
                 onClick={() => { addToCart(product); setIsCartOpen(true); }} 
                 disabled={product.stock === 0}
-                className={`flex-1 font-bold py-5 rounded-2xl transition-all duration-300 shadow-xl flex items-center justify-center gap-3 text-lg ${product.stock > 0 ? 'bg-slate-900 text-white hover:bg-indigo-600 shadow-slate-900/20 hover:shadow-indigo-600/30 hover:-translate-y-1' : 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none'}`}
+                className={`flex-1 font-bold py-5 rounded-2xl transition-all duration-300 shadow-xl flex items-center justify-center gap-3 text-lg ${product.stock > 0 ? 'bg-slate-900 text-white hover:bg-emerald-600 shadow-slate-900/20 hover:shadow-emerald-600/30 hover:-translate-y-1' : 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none'}`}
               >
                 <ShoppingCart size={24} /> {product.stock > 0 ? 'Add to Cart' : 'Out of Stock'}
               </button>
@@ -3491,10 +3890,10 @@ export default function App() {
                 </div>
                 <div className="flex justify-between text-2xl font-display font-black text-slate-900">
                   <span>Total</span>
-                  <span className="text-indigo-600">${((product.price + relatedProducts.slice(0, 2).reduce((acc, p) => acc + p.price, 0)) * 0.9).toFixed(2)}</span>
+                  <span className="text-emerald-600">${((product.price + relatedProducts.slice(0, 2).reduce((acc, p) => acc + p.price, 0)) * 0.9).toFixed(2)}</span>
                 </div>
               </div>
-              <button className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold hover:bg-indigo-600 transition-all shadow-lg shadow-slate-900/20 flex items-center justify-center gap-2">
+              <button className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold hover:bg-emerald-600 transition-all shadow-lg shadow-slate-900/20 flex items-center justify-center gap-2">
                 <Zap size={18} /> Add Bundle to Cart
               </button>
             </div>
@@ -3540,7 +3939,7 @@ export default function App() {
             <div className="flex justify-between items-center mb-8">
               <h3 className="text-xl font-bold text-slate-900">Most Helpful Reviews</h3>
               <div className="flex gap-2">
-                <select className="bg-slate-50 border-none text-sm font-bold text-slate-600 rounded-xl px-4 py-2 outline-none focus:ring-2 focus:ring-indigo-500">
+                <select className="bg-slate-50 border-none text-sm font-bold text-slate-600 rounded-xl px-4 py-2 outline-none focus:ring-2 focus:ring-emerald-500">
                   <option>Most Recent</option>
                   <option>Highest Rated</option>
                   <option>Lowest Rated</option>
@@ -3549,37 +3948,38 @@ export default function App() {
             </div>
             
             <div className="space-y-8">
-              {[1, 2].map(i => (
-                <div key={i} className="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm">
+              {reviews.length > 0 ? reviews.map(review => (
+                <div key={review.id} className="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm">
                   <div className="flex justify-between items-start mb-4">
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
-                        {i === 1 ? 'JD' : 'AS'}
+                      <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold">
+                        {review.user_name.substring(0, 2).toUpperCase()}
                       </div>
                       <div>
-                        <p className="font-bold text-slate-900">{i === 1 ? 'John Doe' : 'Alice Smith'}</p>
+                        <p className="font-bold text-slate-900">{review.user_name}</p>
                         <div className="flex items-center gap-2">
-                          <StarRating rating={5} />
+                          <StarRating rating={review.rating} />
                           <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">Verified Purchase</span>
                         </div>
                       </div>
                     </div>
-                    <span className="text-xs font-bold text-slate-400">2 weeks ago</span>
+                    <span className="text-xs font-bold text-slate-400">{new Date(review.created_at).toLocaleDateString()}</span>
                   </div>
-                  <h4 className="font-bold text-slate-900 mb-2">Absolutely stunning quality!</h4>
                   <p className="text-slate-600 leading-relaxed">
-                    I was skeptical at first, but this product exceeded all my expectations. The build quality is top-notch and it looks even better in person. Highly recommend to anyone looking for premium gear.
+                    {review.comment}
                   </p>
                   <div className="mt-6 flex items-center gap-6">
                     <button className="flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-slate-900 transition-colors">
-                      <ThumbsUp size={14} /> Helpful (12)
+                      <ThumbsUp size={14} /> Helpful
                     </button>
                     <button className="flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-slate-900 transition-colors">
                       <MessageSquare size={14} /> Reply
                     </button>
                   </div>
                 </div>
-              ))}
+              )) : (
+                <p className="text-slate-500">No reviews yet.</p>
+              )}
             </div>
           </div>
         </div>
@@ -3622,7 +4022,7 @@ export default function App() {
                   </div>
                   <div className="flex flex-col flex-1 px-2">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">{p.category}</p>
-                    <h3 className="text-xl font-display font-black text-slate-900 leading-tight line-clamp-1 mb-3 group-hover:text-indigo-600 transition-colors">{p.name}</h3>
+                    <h3 className="text-xl font-display font-black text-slate-900 leading-tight line-clamp-1 mb-3 group-hover:text-emerald-600 transition-colors">{p.name}</h3>
                     <div className="flex items-center justify-between mt-auto">
                       <div className="flex flex-col">
                         <span className="text-2xl font-mono font-bold text-slate-900 tracking-tighter">${p.is_sale ? p.sale_price?.toFixed(2) : p.price.toFixed(2)}</span>
@@ -3654,7 +4054,7 @@ export default function App() {
                   <div className="aspect-square bg-slate-50 rounded-2xl overflow-hidden mb-3 border border-slate-100 group-hover:shadow-lg transition-all">
                     <img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" referrerPolicy="no-referrer" />
                   </div>
-                  <h4 className="text-sm font-bold text-slate-900 line-clamp-1 group-hover:text-indigo-600 transition-colors">{p.name}</h4>
+                  <h4 className="text-sm font-bold text-slate-900 line-clamp-1 group-hover:text-emerald-600 transition-colors">{p.name}</h4>
                   <p className="text-xs font-mono font-bold text-slate-500 mt-1">${p.price.toFixed(2)}</p>
                 </div>
               ))}
@@ -3692,23 +4092,10 @@ export default function App() {
       e.preventDefault();
       setLoading(true);
       try {
-        const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/signup';
         const body = mode === 'login' ? { email, password } : { email, password, name, role };
-        
-        const res = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        });
-        
-        const data = await res.json();
-        
-        if (res.ok) {
-          onLogin(data.user);
-          onClose();
-        } else {
-          showToast(data.error || 'Authentication failed', 'error');
-        }
+        const data = mode === 'login' ? await authService.login(body) : await authService.signup(body);
+        onLogin(data.user);
+        onClose();
       } catch (err) {
         showToast('An error occurred', 'error');
       } finally {
@@ -3718,8 +4105,7 @@ export default function App() {
 
     const handleOAuth = async (provider: string) => {
       try {
-        const res = await fetch(`/api/auth/${provider}/url?role=${role}`);
-        const { url } = await res.json();
+        const { url } = await authService.getOAuthUrl(provider, role);
         const width = 500;
         const height = 600;
         const left = window.screen.width / 2 - width / 2;
@@ -3757,26 +4143,26 @@ export default function App() {
               {mode === 'signup' && (
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-2">Full Name</label>
-                  <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all" placeholder="John Doe" />
+                  <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none transition-all" placeholder="John Doe" />
                 </div>
               )}
               
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">Email Address</label>
-                <input type="email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all" placeholder="you@example.com" />
+                <input type="email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none transition-all" placeholder="you@example.com" />
               </div>
               
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <label className="block text-sm font-bold text-slate-700">Password</label>
                   {mode === 'login' && onForgotPassword && (
-                    <button type="button" onClick={onForgotPassword} className="text-xs font-bold text-indigo-600 hover:text-indigo-800">Forgot Password?</button>
+                    <button type="button" onClick={onForgotPassword} className="text-xs font-bold text-emerald-600 hover:text-emerald-800">Forgot Password?</button>
                   )}
                 </div>
-                <input type="password" required value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all" placeholder="••••••••" />
+                <input type="password" required value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none transition-all" placeholder="••••••••" />
               </div>
 
-              <button type="submit" disabled={loading} className="w-full bg-slate-900 text-white font-bold py-4 rounded-xl hover:bg-indigo-600 transition-colors shadow-lg shadow-indigo-200 disabled:opacity-50 flex items-center justify-center gap-2">
+              <button type="submit" disabled={loading} className="w-full bg-slate-900 text-white font-bold py-4 rounded-xl hover:bg-emerald-600 transition-colors shadow-lg shadow-emerald-200 disabled:opacity-50 flex items-center justify-center gap-2">
                 {loading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div> : (mode === 'login' ? 'Sign In' : 'Create Account')}
               </button>
             </form>
@@ -3785,7 +4171,7 @@ export default function App() {
           <div className="p-6 border-t border-slate-100 bg-slate-50 text-center">
             <p className="text-slate-600 font-medium">
               {mode === 'login' ? "Don't have an account? " : "Already have an account? "}
-              <button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} className="text-indigo-600 font-bold hover:text-indigo-800 transition-colors">
+              <button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} className="text-emerald-600 font-bold hover:text-emerald-800 transition-colors">
                 {mode === 'login' ? 'Sign Up' : 'Sign In'}
               </button>
             </p>
@@ -3886,7 +4272,7 @@ export default function App() {
             return (
               <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
                 <div className="text-center mb-8">
-                  <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
                     <Fingerprint size={32} />
                   </div>
                   <h3 className="text-xl font-bold text-slate-900">Select Document Type</h3>
@@ -3902,26 +4288,26 @@ export default function App() {
                       key={type.id}
                       onClick={() => setIdType(type.id as any)}
                       className={`flex items-center gap-4 p-5 rounded-2xl border-2 transition-all text-left ${
-                        idType === type.id ? 'border-indigo-600 bg-indigo-50' : 'border-slate-100 hover:border-slate-200 bg-white'
+                        idType === type.id ? 'border-emerald-600 bg-emerald-50' : 'border-slate-100 hover:border-slate-200 bg-white'
                       }`}
                     >
                       <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                        idType === type.id ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'
+                        idType === type.id ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500'
                       }`}>
                         {type.icon}
                       </div>
                       <div className="flex-1">
-                        <p className={`font-bold ${idType === type.id ? 'text-indigo-900' : 'text-slate-900'}`}>{type.name}</p>
+                        <p className={`font-bold ${idType === type.id ? 'text-emerald-900' : 'text-slate-900'}`}>{type.name}</p>
                         <p className="text-xs text-slate-500">{type.desc}</p>
                       </div>
-                      {idType === type.id && <CheckCircle2 size={20} className="text-indigo-600" />}
+                      {idType === type.id && <CheckCircle2 size={20} className="text-emerald-600" />}
                     </button>
                   ))}
                 </div>
                 <button
                   disabled={!idType}
                   onClick={nextStep}
-                  className="w-full bg-slate-900 text-white font-bold py-4 rounded-2xl hover:bg-indigo-600 transition-all disabled:opacity-50 shadow-xl shadow-indigo-100 mt-4 flex items-center justify-center gap-2"
+                  className="w-full bg-slate-900 text-white font-bold py-4 rounded-2xl hover:bg-emerald-600 transition-all disabled:opacity-50 shadow-xl shadow-emerald-100 mt-4 flex items-center justify-center gap-2"
                 >
                   Continue <ArrowRight size={20} />
                 </button>
@@ -3933,7 +4319,7 @@ export default function App() {
             return (
               <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
                 <div className="text-center mb-8">
-                  <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
                     <Scan size={32} />
                   </div>
                   <h3 className="text-xl font-bold text-slate-900">Upload {isFront ? 'Front' : 'Back'} of ID</h3>
@@ -3963,7 +4349,7 @@ export default function App() {
                   <button
                     disabled={!files[isFront ? 'front' : 'back']}
                     onClick={nextStep}
-                    className="flex-[2] bg-slate-900 text-white font-bold py-4 rounded-2xl hover:bg-indigo-600 transition-all disabled:opacity-50 shadow-xl shadow-indigo-100"
+                    className="flex-[2] bg-slate-900 text-white font-bold py-4 rounded-2xl hover:bg-emerald-600 transition-all disabled:opacity-50 shadow-xl shadow-emerald-100"
                   >
                     Next Step
                   </button>
@@ -3974,7 +4360,7 @@ export default function App() {
             return (
               <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
                 <div className="text-center mb-8">
-                  <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
                     <UserCheck size={32} />
                   </div>
                   <h3 className="text-xl font-bold text-slate-900">Face Verification</h3>
@@ -3989,7 +4375,7 @@ export default function App() {
                       <p className="text-xs font-bold uppercase tracking-widest">Position your face</p>
                     </div>
                   )}
-                  <div className="absolute inset-0 border-[20px] border-indigo-600/20 rounded-full animate-pulse pointer-events-none"></div>
+                  <div className="absolute inset-0 border-[20px] border-emerald-600/20 rounded-full animate-pulse pointer-events-none"></div>
                   <input type="file" accept="image/*" capture="user" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => handleFileUpload('face', e.target.files?.[0])} />
                 </div>
                 <div className="flex gap-4">
@@ -3997,7 +4383,7 @@ export default function App() {
                   <button
                     disabled={!files.face}
                     onClick={nextStep}
-                    className="flex-[2] bg-indigo-600 text-white font-bold py-4 rounded-2xl hover:bg-indigo-700 transition-all disabled:opacity-50 shadow-xl shadow-indigo-100"
+                    className="flex-[2] bg-emerald-600 text-white font-bold py-4 rounded-2xl hover:bg-emerald-700 transition-all disabled:opacity-50 shadow-xl shadow-emerald-100"
                   >
                     Complete Verification
                   </button>
@@ -4008,9 +4394,9 @@ export default function App() {
             return (
               <div className="py-20 text-center">
                 <div className="relative w-24 h-24 mx-auto mb-8">
-                  <div className="absolute inset-0 border-4 border-indigo-100 rounded-full"></div>
-                  <div className="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin"></div>
-                  <div className="absolute inset-0 flex items-center justify-center text-indigo-600">
+                  <div className="absolute inset-0 border-4 border-emerald-100 rounded-full"></div>
+                  <div className="absolute inset-0 border-4 border-emerald-600 rounded-full border-t-transparent animate-spin"></div>
+                  <div className="absolute inset-0 flex items-center justify-center text-emerald-600">
                     <ShieldCheck size={32} />
                   </div>
                 </div>
@@ -4028,7 +4414,7 @@ export default function App() {
                 <p className="text-slate-500 mb-8 max-w-xs mx-auto">Your identity verification is being reviewed. We'll notify you once it's approved.</p>
                 <button
                   onClick={() => { setActiveTab('profile'); setStep('type'); }}
-                  className="bg-slate-900 text-white font-bold px-12 py-4 rounded-2xl hover:bg-indigo-600 transition-all shadow-xl shadow-indigo-100"
+                  className="bg-slate-900 text-white font-bold px-12 py-4 rounded-2xl hover:bg-emerald-600 transition-all shadow-xl shadow-emerald-100"
                 >
                   Back to Profile
                 </button>
@@ -4051,7 +4437,7 @@ export default function App() {
                   (step === 'front' && s === 2) || 
                   (step === 'back' && s === 3) || 
                   (step === 'face' && s === 4) ||
-                  (step === 'submitting' || step === 'completed') ? 'bg-indigo-600 w-6' : 'bg-slate-200'
+                  (step === 'submitting' || step === 'completed') ? 'bg-emerald-600 w-6' : 'bg-slate-200'
                 }`}></div>
               ))}
             </div>
@@ -4060,11 +4446,11 @@ export default function App() {
             {renderStep()}
           </div>
           <div className="p-6 bg-slate-50 border-t border-slate-100 flex items-start gap-4">
-            <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
+            <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg">
               <ShieldCheck size={20} />
             </div>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Your data is encrypted and stored securely. We use bank-level security to protect your sensitive information. By continuing, you agree to our <button className="text-indigo-600 font-bold hover:underline">Privacy Policy</button>.
+              Your data is encrypted and stored securely. We use bank-level security to protect your sensitive information. By continuing, you agree to our <button className="text-emerald-600 font-bold hover:underline">Privacy Policy</button>.
             </p>
           </div>
         </div>
@@ -4113,7 +4499,7 @@ export default function App() {
             <div className="bg-bg-card rounded-3xl shadow-sm border border-border-main p-8 text-center relative overflow-hidden group transition-colors">
               <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent"></div>
               <div 
-                className={`relative inline-block mb-6 group/avatar rounded-3xl transition-all duration-300 ${isDragging ? 'ring-4 ring-indigo-500 scale-105' : ''}`}
+                className={`relative inline-block mb-6 group/avatar rounded-3xl transition-all duration-300 ${isDragging ? 'ring-4 ring-emerald-500 scale-105' : ''}`}
                 onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                 onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
                 onDrop={(e) => { e.preventDefault(); setIsDragging(false); handleAvatarFile(e.dataTransfer.files?.[0]); }}
@@ -4128,7 +4514,7 @@ export default function App() {
                   <span className="text-xs font-bold uppercase tracking-wider">{isDragging ? 'Drop Here' : 'Update'}</span>
                   <input type="file" accept="image/*" className="hidden" onChange={(e) => handleAvatarFile(e.target.files?.[0])} />
                 </label>
-                <div className="absolute -bottom-2 -right-2 bg-indigo-600 text-white p-2.5 rounded-2xl shadow-lg border-4 border-white pointer-events-none transition-transform group-hover/avatar:scale-110 z-10">
+                <div className="absolute -bottom-2 -right-2 bg-emerald-600 text-white p-2.5 rounded-2xl shadow-lg border-4 border-white pointer-events-none transition-transform group-hover/avatar:scale-110 z-10">
                   <Camera size={20} />
                 </div>
               </div>
@@ -4138,7 +4524,7 @@ export default function App() {
                 <span className={`px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest border ${
                   currentUser?.role === 'admin' ? 'bg-rose-50 text-rose-600 border-rose-100' : 
                   currentUser?.role === 'vendor' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 
-                  'bg-indigo-50 text-indigo-600 border-indigo-100'
+                  'bg-emerald-50 text-emerald-600 border-emerald-100'
                 }`}>
                   {currentUser?.role} Account
                 </span>
@@ -4146,9 +4532,9 @@ export default function App() {
             </div>
 
             <div className="bg-slate-900 rounded-3xl p-8 text-white relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full -mr-16 -mt-16 blur-3xl"></div>
+              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full -mr-16 -mt-16 blur-3xl"></div>
               <h4 className="text-lg font-bold mb-2 flex items-center gap-2">
-                <Zap size={18} className="text-indigo-400" /> Pro Tip
+                <Zap size={18} className="text-emerald-400" /> Pro Tip
               </h4>
               <p className="text-slate-400 text-sm leading-relaxed">
                 Keep your profile updated to build trust with other users on the platform. A real photo increases engagement by up to 40%.
@@ -4261,7 +4647,7 @@ export default function App() {
                           value={formData.social_links.twitter} 
                           onChange={e => setFormData({...formData, social_links: {...formData.social_links, twitter: e.target.value}})}
                           placeholder="https://twitter.com/username"
-                          className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all bg-slate-50/50"
+                          className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all bg-slate-50/50"
                         />
                       </div>
                     </div>
@@ -4274,7 +4660,7 @@ export default function App() {
                           value={formData.social_links.instagram} 
                           onChange={e => setFormData({...formData, social_links: {...formData.social_links, instagram: e.target.value}})}
                           placeholder="https://instagram.com/username"
-                          className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all bg-slate-50/50"
+                          className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all bg-slate-50/50"
                         />
                       </div>
                     </div>
@@ -4287,7 +4673,7 @@ export default function App() {
                           value={formData.social_links.website} 
                           onChange={e => setFormData({...formData, social_links: {...formData.social_links, website: e.target.value}})}
                           placeholder="https://yourwebsite.com"
-                          className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all bg-slate-50/50"
+                          className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all bg-slate-50/50"
                         />
                       </div>
                     </div>
@@ -4305,7 +4691,7 @@ export default function App() {
                         type="checkbox" 
                         checked={formData.preferences.newsletter}
                         onChange={e => setFormData({...formData, preferences: {...formData.preferences, newsletter: e.target.checked}})}
-                        className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        className="w-5 h-5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                       />
                       <span className="text-sm font-medium text-slate-700">Subscribe to newsletter</span>
                     </label>
@@ -4314,7 +4700,7 @@ export default function App() {
                         type="checkbox" 
                         checked={formData.preferences.notifications}
                         onChange={e => setFormData({...formData, preferences: {...formData.preferences, notifications: e.target.checked}})}
-                        className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        className="w-5 h-5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                       />
                       <span className="text-sm font-medium text-slate-700">Receive email notifications</span>
                     </label>
@@ -4336,20 +4722,20 @@ export default function App() {
                             onClick={() => setTheme(t.id)}
                             className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${
                               theme === t.id 
-                                ? 'border-indigo-600 bg-indigo-50/50' 
+                                ? 'border-emerald-600 bg-emerald-50/50' 
                                 : 'border-slate-100 hover:border-slate-200 bg-slate-50/30'
                             }`}
                           >
                             <div className={`w-8 h-8 rounded-full shadow-inner flex items-center justify-center ${
                               t.id === 'light' ? 'bg-white border border-slate-200' :
                               t.id === 'dark' ? 'bg-slate-900' :
-                              t.id === 'midnight' ? 'bg-indigo-950' :
+                              t.id === 'midnight' ? 'bg-emerald-950' :
                               t.id === 'emerald' ? 'bg-emerald-900' :
                               'bg-rose-900'
                             }`}>
                               <span className={t.id === 'light' ? 'text-slate-400' : 'text-white'}>{t.icon}</span>
                             </div>
-                            <span className={`text-[10px] font-bold ${theme === t.id ? 'text-indigo-600' : 'text-slate-500'}`}>{t.name}</span>
+                            <span className={`text-[10px] font-bold ${theme === t.id ? 'text-emerald-600' : 'text-slate-500'}`}>{t.name}</span>
                           </button>
                         ))}
                       </div>
@@ -4373,7 +4759,7 @@ export default function App() {
                           value={formData.password} 
                           onChange={e => setFormData({...formData, password: e.target.value})}
                           placeholder="Leave blank to keep current"
-                          className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all bg-slate-50/50"
+                          className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all bg-slate-50/50"
                         />
                       </div>
                     </div>
@@ -4386,7 +4772,7 @@ export default function App() {
                           value={formData.confirmPassword} 
                           onChange={e => setFormData({...formData, confirmPassword: e.target.value})}
                           placeholder="Confirm new password"
-                          className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all bg-slate-50/50"
+                          className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all bg-slate-50/50"
                         />
                       </div>
                     </div>
@@ -4394,7 +4780,7 @@ export default function App() {
                 </div>
 
                 <div className="flex justify-end pt-4">
-                  <button type="submit" className="bg-indigo-600 text-white px-10 py-4 rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-200 flex items-center gap-2 group">
+                  <button type="submit" className="bg-emerald-600 text-white px-10 py-4 rounded-2xl font-bold hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-200 flex items-center gap-2 group">
                     <Save size={20} className="group-hover:scale-110 transition-transform" /> Save Changes
                   </button>
                 </div>
@@ -4417,13 +4803,11 @@ export default function App() {
 
     const handleSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
-      const res = await fetch('/api/auth/forgot-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
-      });
-      if (res.ok) {
+      try {
+        await authService.forgotPassword(email);
         setSubmitted(true);
+      } catch (err) {
+        showToast('Failed to send password reset email', 'error');
       }
     };
 
@@ -4433,7 +4817,7 @@ export default function App() {
           <button onClick={onClose} className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-full transition-colors"><X size={20} /></button>
           
           <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
               <KeyRound size={32} />
             </div>
             <h2 className="text-2xl font-bold text-slate-900">Reset Password</h2>
@@ -4457,11 +4841,11 @@ export default function App() {
                   required 
                   value={email}
                   onChange={e => setEmail(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none"
                   placeholder="you@example.com"
                 />
               </div>
-              <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200">Send Reset Link</button>
+              <button type="submit" className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-200">Send Reset Link</button>
             </form>
           )}
         </div>
@@ -4495,7 +4879,7 @@ export default function App() {
     if (!isChatOpen) return (
       <button 
         onClick={() => setIsChatOpen(true)}
-        className="fixed bottom-8 right-8 w-16 h-16 bg-indigo-600 text-white rounded-full shadow-2xl flex items-center justify-center hover:bg-indigo-700 transition-all z-[60] group"
+        className="fixed bottom-8 right-8 w-16 h-16 bg-emerald-600 text-white rounded-full shadow-2xl flex items-center justify-center hover:bg-emerald-700 transition-all z-[60] group"
       >
         <MessageSquare size={28} />
         {unreadChatCount > 0 && (
@@ -4515,7 +4899,7 @@ export default function App() {
                 <ChevronLeft size={20} />
               </button>
             ) : (
-              <MessageSquare size={20} className="text-indigo-400" />
+              <MessageSquare size={20} className="text-emerald-400" />
             )}
             <h3 className="font-bold">
               {activeChatUserId 
@@ -4541,7 +4925,7 @@ export default function App() {
                   <button 
                     key={conv.other_user_id}
                     onClick={() => setActiveChatUserId(conv.other_user_id)}
-                    className="w-full p-4 bg-white rounded-2xl border border-slate-100 flex items-center gap-4 hover:border-indigo-200 hover:shadow-md transition-all text-left group"
+                    className="w-full p-4 bg-white rounded-2xl border border-slate-100 flex items-center gap-4 hover:border-emerald-200 hover:shadow-md transition-all text-left group"
                   >
                     <img src={conv.other_user_avatar} alt="" className="w-12 h-12 rounded-full bg-slate-100" />
                     <div className="flex-1 min-w-0">
@@ -4552,7 +4936,7 @@ export default function App() {
                       <p className="text-sm text-slate-500 truncate">{conv.last_message}</p>
                     </div>
                     {conv.unread_count > 0 && (
-                      <span className="w-5 h-5 bg-indigo-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                      <span className="w-5 h-5 bg-emerald-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
                         {conv.unread_count}
                       </span>
                     )}
@@ -4566,7 +4950,7 @@ export default function App() {
                 <div key={idx} className={`flex ${msg.sender_id === currentUser?.id ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${
                     msg.sender_id === currentUser?.id 
-                      ? 'bg-indigo-600 text-white rounded-tr-none' 
+                      ? 'bg-emerald-600 text-white rounded-tr-none' 
                       : 'bg-white text-slate-900 border border-slate-200 rounded-tl-none'
                   }`}>
                     {msg.message}
@@ -4587,9 +4971,9 @@ export default function App() {
               value={messageText}
               onChange={(e) => setMessageText(e.target.value)}
               placeholder="Type a message..."
-              className="flex-1 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+              className="flex-1 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
             />
-            <button type="submit" className="p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors">
+            <button type="submit" className="p-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors">
               <ArrowRight size={20} />
             </button>
           </form>
@@ -4668,8 +5052,7 @@ export default function App() {
     };
 
     try {
-      const res = await fetch('/api/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(orderData) });
-      const data = await res.json();
+      const data = await orderService.createOrder(orderData);
       if (data.success) { 
         setCart([]); 
         setIsCheckoutOpen(false); 
@@ -4690,7 +5073,7 @@ export default function App() {
       {currentUser && (
       <aside className={`fixed inset-y-0 left-0 z-[70] w-64 bg-slate-900 text-slate-300 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} flex flex-col`}>
         <div className="p-6 flex items-center gap-3 text-white border-b border-slate-800">
-          <Moon size={28} className="text-indigo-400" />
+          <Moon size={28} className="text-emerald-400" />
           <span className="font-bold text-2xl tracking-tight">Moonshop</span>
           <button onClick={() => setIsSidebarOpen(false)} className="ml-auto md:hidden text-slate-400 hover:text-white"><X size={20} /></button>
         </div>
@@ -4700,23 +5083,23 @@ export default function App() {
             <p className="px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Profile</p>
             <button 
               onClick={() => {setCurrentView('settings'); setIsSidebarOpen(false);}}
-              className="w-full p-3 rounded-2xl bg-slate-800/40 border border-slate-700/50 flex items-center gap-3 hover:bg-slate-800 hover:border-indigo-500/50 transition-all group text-left relative overflow-hidden"
+              className="w-full p-3 rounded-2xl bg-slate-800/40 border border-slate-700/50 flex items-center gap-3 hover:bg-slate-800 hover:border-emerald-500/50 transition-all group text-left relative overflow-hidden"
             >
-              <div className="absolute inset-0 bg-gradient-to-br from-indigo-600/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <div className="absolute inset-0 bg-gradient-to-br from-emerald-600/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
               <div className="relative">
                 <img 
                   src={currentUser?.avatar || `https://ui-avatars.com/api/?name=${currentUser?.name}`} 
                   alt="Avatar" 
-                  className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 group-hover:border-indigo-500 transition-colors object-cover shadow-sm" 
+                  className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 group-hover:border-emerald-500 transition-colors object-cover shadow-sm" 
                 />
-                <div className="absolute -bottom-1 -right-1 bg-indigo-600 rounded-full p-0.5 border-2 border-slate-900 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="absolute -bottom-1 -right-1 bg-emerald-600 rounded-full p-0.5 border-2 border-slate-900 opacity-0 group-hover:opacity-100 transition-opacity">
                   <Settings size={8} className="text-white" />
                 </div>
               </div>
               <div className="flex-1 min-w-0 relative">
-                <p className="font-bold text-white text-sm truncate group-hover:text-indigo-400 transition-colors">{currentUser?.name}</p>
+                <p className="font-bold text-white text-sm truncate group-hover:text-emerald-400 transition-colors">{currentUser?.name}</p>
                 <div className="flex items-center gap-1.5">
-                  <div className={`w-1.5 h-1.5 rounded-full ${currentUser?.role === 'admin' ? 'bg-rose-500' : currentUser?.role === 'vendor' ? 'bg-emerald-500' : 'bg-indigo-500'}`}></div>
+                  <div className={`w-1.5 h-1.5 rounded-full ${currentUser?.role === 'admin' ? 'bg-rose-500' : currentUser?.role === 'vendor' ? 'bg-emerald-500' : 'bg-emerald-500'}`}></div>
                   <p className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">{currentUser?.role}</p>
                 </div>
               </div>
@@ -4729,7 +5112,7 @@ export default function App() {
           <p className="px-4 text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('menu')}</p>
           
           {/* Public Links */}
-          <button onClick={() => {setCurrentView('shop'); setIsSidebarOpen(false);}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${currentView === 'shop' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}><ShoppingCart size={20} /> {t('shop_gear')}</button>
+          <button onClick={() => {setCurrentView('shop'); setIsSidebarOpen(false);}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${currentView === 'shop' ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}><ShoppingCart size={20} /> {t('shop_gear')}</button>
           {!currentUser && (
             <button 
               onClick={() => {
@@ -4738,7 +5121,7 @@ export default function App() {
                 setIsAuthOpen(true);
                 setIsSidebarOpen(false);
               }} 
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors bg-indigo-900/50 text-indigo-100 hover:bg-indigo-800"
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors bg-emerald-900/50 text-emerald-100 hover:bg-emerald-800"
             >
               <Zap size={20} className="text-yellow-400" /> {t('become_seller')}
             </button>
@@ -4747,9 +5130,9 @@ export default function App() {
           {/* Buyer Links */}
           {currentUser && currentUser.role === 'buyer' && (
             <>
-              <button onClick={() => {setCurrentView('buyer_dashboard'); setIsSidebarOpen(false);}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${currentView === 'buyer_dashboard' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}><LayoutDashboard size={20} /> {t('dashboard')}</button>
-              <button onClick={() => {setCurrentView('buyer_orders'); setIsSidebarOpen(false);}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${currentView === 'buyer_orders' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}><Package size={20} /> {t('my_orders')}</button>
-              <button onClick={() => {setCurrentView('buyer_wishlist'); setIsSidebarOpen(false);}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${currentView === 'buyer_wishlist' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}><Heart size={20} /> {t('wishlist')}</button>
+              <button onClick={() => {setCurrentView('buyer_dashboard'); setIsSidebarOpen(false);}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${currentView === 'buyer_dashboard' ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}><LayoutDashboard size={20} /> {t('dashboard')}</button>
+              <button onClick={() => {setCurrentView('buyer_orders'); setIsSidebarOpen(false);}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${currentView === 'buyer_orders' ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}><Package size={20} /> {t('my_orders')}</button>
+              <button onClick={() => {setCurrentView('buyer_wishlist'); setIsSidebarOpen(false);}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${currentView === 'buyer_wishlist' ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}><Heart size={20} /> {t('wishlist')}</button>
             </>
           )}
 
@@ -4792,7 +5175,7 @@ export default function App() {
           ) : (
             <button 
               onClick={() => { setAuthMode('login'); setAuthRole('buyer'); setIsAuthOpen(true); setIsSidebarOpen(false); }} 
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 transition-all font-bold justify-center shadow-lg shadow-indigo-500/20"
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition-all font-bold justify-center shadow-lg shadow-emerald-500/20"
             >
               {t('sign_in')}
             </button>
@@ -4804,17 +5187,17 @@ export default function App() {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         {/* Topbar */}
-        <header className={`sticky top-0 z-40 w-full transition-all duration-500 ${isScrolled ? 'bg-white/80 backdrop-blur-xl shadow-lg border-b border-slate-100 py-3' : 'bg-bg-card border-b border-border-main py-4'}`}>
+        <header className={`sticky top-0 z-50 w-full transition-all duration-300 ${isScrolled ? 'bg-white/90 backdrop-blur-xl shadow-sm border-b border-slate-200 py-3' : 'bg-white border-b border-slate-100 py-4'}`}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
             <div className="flex items-center gap-8">
               <div 
                 className="flex items-center gap-3 cursor-pointer group" 
                 onClick={() => { setCurrentView('shop'); setSelectedCategory(null); setSearchQuery(''); }}
               >
-                <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-white group-hover:bg-indigo-600 transition-colors shadow-lg shadow-slate-900/20 group-hover:shadow-indigo-600/20">
-                  <Moon size={24} className="group-hover:rotate-12 transition-transform" />
+                <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-emerald-600/20">
+                  <Moon size={24} />
                 </div>
-                <span className="text-2xl font-display font-black tracking-tighter text-slate-900">MOONSHOP</span>
+                <span className="text-2xl font-bold tracking-tighter text-slate-900">MOONSHOP</span>
               </div>
 
               {/* Desktop Navigation */}
@@ -4823,7 +5206,7 @@ export default function App() {
                   <button 
                     key={cat}
                     onClick={() => { setSelectedCategory(cat); setCurrentView('shop'); }}
-                    className={`text-sm font-bold transition-colors ${selectedCategory === cat ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-900'}`}
+                    className={`text-sm font-bold transition-colors ${selectedCategory === cat ? 'text-emerald-600' : 'text-slate-500 hover:text-slate-900'}`}
                   >
                     {cat}
                   </button>
@@ -4840,7 +5223,7 @@ export default function App() {
                     setAuthRole('vendor');
                     setIsAuthOpen(true);
                   }}
-                  className="hidden md:flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-all font-bold text-sm border border-indigo-100"
+                  className="hidden md:flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-all font-bold text-sm border border-emerald-100"
                 >
                   <Zap size={16} className="text-amber-500 fill-amber-500" />
                   <span>{t('become_seller')}</span>
@@ -4850,13 +5233,13 @@ export default function App() {
               {/* Search Bar */}
               {currentView === 'shop' && (
                 <div className="hidden lg:flex relative group">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors" size={18} />
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-600 transition-colors" size={18} />
                   <input 
                     type="text" 
                     placeholder="Search premium gear..." 
                     value={searchQuery} 
                     onChange={(e) => setSearchQuery(e.target.value)} 
-                    className="w-64 xl:w-80 pl-12 pr-4 py-2.5 bg-slate-100 border-transparent rounded-full text-sm font-medium focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none text-slate-900" 
+                    className="w-64 xl:w-80 pl-12 pr-4 py-2.5 bg-slate-100 border-transparent rounded-full text-sm font-medium focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all outline-none text-slate-900" 
                   />
                 </div>
               )}
@@ -4884,7 +5267,7 @@ export default function App() {
                           <button 
                             key={lang}
                             onClick={() => { setLanguage(lang as any); setIsLangOpen(false); }} 
-                            className={`w-full px-4 py-2.5 text-left text-sm hover:bg-slate-50 transition-colors flex items-center justify-between ${language === lang ? 'text-indigo-600 font-bold bg-indigo-50' : 'text-slate-600'}`}
+                            className={`w-full px-4 py-2.5 text-left text-sm hover:bg-slate-50 transition-colors flex items-center justify-between ${language === lang ? 'text-emerald-600 font-bold bg-emerald-50' : 'text-slate-600'}`}
                           >
                             {lang === 'en' ? 'English' : lang === 'am' ? 'አማርኛ' : 'Afaan Oromoo'}
                             {language === lang && <CheckCircle2 size={14} />}
@@ -4905,7 +5288,7 @@ export default function App() {
                     </button>
                     <button 
                       onClick={() => { setAuthMode('signup'); setAuthRole('buyer'); setIsAuthOpen(true); }} 
-                      className="bg-slate-900 text-white text-sm font-bold px-6 py-2.5 rounded-xl hover:bg-indigo-600 transition-all shadow-lg shadow-slate-900/20 hover:shadow-indigo-600/20"
+                      className="bg-slate-900 text-white text-sm font-bold px-6 py-2.5 rounded-xl hover:bg-emerald-600 transition-all shadow-lg shadow-slate-900/20 hover:shadow-emerald-600/20"
                     >
                       Join Now
                     </button>
@@ -4937,7 +5320,7 @@ export default function App() {
                               <h3 className="font-bold text-slate-900">Notifications</h3>
                               <button onClick={() => {
                                 fetch(`/api/users/${currentUser.id}/notifications/read-all`, { method: 'PUT' }).then(() => fetchNotifications());
-                              }} className="text-xs font-bold text-indigo-600 hover:text-indigo-800">Mark all as read</button>
+                              }} className="text-xs font-bold text-emerald-600 hover:text-emerald-800">Mark all as read</button>
                             </div>
                             <div className="max-h-96 overflow-y-auto">
                               {notifications.length === 0 ? (
@@ -4963,7 +5346,7 @@ export default function App() {
                     {currentUser.role === 'buyer' && (
                       <button 
                         onClick={() => setIsCartOpen(true)}
-                        className="p-2.5 rounded-xl bg-slate-900 text-white hover:bg-indigo-600 transition-all shadow-lg shadow-slate-900/20 hover:shadow-indigo-600/20 relative group"
+                        className="p-2.5 rounded-xl bg-slate-900 text-white hover:bg-emerald-600 transition-all shadow-lg shadow-slate-900/20 hover:shadow-emerald-600/20 relative group"
                       >
                         <ShoppingCart size={20} />
                         {cartCount > 0 && (
@@ -4999,7 +5382,7 @@ export default function App() {
                               <p className="text-sm font-bold text-slate-900 truncate">{currentUser.name}</p>
                               <p className="text-xs text-slate-500 truncate mt-0.5">{currentUser.email}</p>
                               <div className="mt-3 flex">
-                                <span className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-600 text-[10px] font-bold uppercase tracking-wider border border-indigo-100">
+                                <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-wider border border-emerald-100">
                                   {currentUser.role} Account
                                 </span>
                               </div>
@@ -5069,7 +5452,7 @@ export default function App() {
                 <Lock size={48} className="mb-4 text-slate-300" />
                 <p className="mb-6 text-xl font-bold text-slate-700">Access Restricted</p>
                 <p className="mb-8 text-slate-500">Please sign in to access this page.</p>
-                <button onClick={() => { setAuthMode('login'); setAuthRole('buyer'); setIsAuthOpen(true); }} className="bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200">Sign In</button>
+                <button onClick={() => { setAuthMode('login'); setAuthRole('buyer'); setIsAuthOpen(true); }} className="bg-emerald-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-200">Sign In</button>
               </div>
             )
           )}
@@ -5083,13 +5466,13 @@ export default function App() {
       <nav className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-[90%] max-w-md">
         <div className="bg-slate-900/90 backdrop-blur-xl border border-white/10 rounded-3xl p-2 shadow-2xl flex items-center justify-between relative overflow-hidden">
           {/* Active Indicator Background */}
-          <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 to-transparent pointer-events-none"></div>
+          <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-transparent pointer-events-none"></div>
           
           <button 
             onClick={() => setCurrentView('shop')}
             className={`flex flex-col items-center justify-center w-14 h-14 rounded-2xl transition-all relative ${currentView === 'shop' ? 'text-white' : 'text-slate-500 hover:text-slate-300'}`}
           >
-            {currentView === 'shop' && <motion.div layoutId="activeNav" className="absolute inset-0 bg-indigo-600 rounded-2xl shadow-lg shadow-indigo-500/40" />}
+            {currentView === 'shop' && <motion.div layoutId="activeNav" className="absolute inset-0 bg-emerald-600 rounded-2xl shadow-lg shadow-emerald-500/40" />}
             <Home size={22} className="relative z-10" />
             <span className="text-[10px] font-bold mt-1 relative z-10">Shop</span>
           </button>
@@ -5107,7 +5490,7 @@ export default function App() {
             }}
             className={`flex flex-col items-center justify-center w-14 h-14 rounded-2xl transition-all relative ${['buyer_wishlist', 'vendor_products', 'admin_products'].includes(currentView) ? 'text-white' : 'text-slate-500 hover:text-slate-300'}`}
           >
-            {['buyer_wishlist', 'vendor_products', 'admin_products'].includes(currentView) && <motion.div layoutId="activeNav" className="absolute inset-0 bg-indigo-600 rounded-2xl shadow-lg shadow-indigo-500/40" />}
+            {['buyer_wishlist', 'vendor_products', 'admin_products'].includes(currentView) && <motion.div layoutId="activeNav" className="absolute inset-0 bg-emerald-600 rounded-2xl shadow-lg shadow-emerald-500/40" />}
             <Heart size={22} className="relative z-10" />
             <span className="text-[10px] font-bold mt-1 relative z-10">Saved</span>
           </button>
@@ -5116,7 +5499,7 @@ export default function App() {
           <div className="relative -mt-10">
             <button 
               onClick={() => setIsCartOpen(true)}
-              className="w-16 h-16 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-2xl shadow-indigo-500/50 border-4 border-slate-900 relative group active:scale-90 transition-transform"
+              className="w-16 h-16 bg-emerald-600 rounded-full flex items-center justify-center text-white shadow-2xl shadow-emerald-500/50 border-4 border-slate-900 relative group active:scale-90 transition-transform"
             >
               <ShoppingCart size={24} />
               {cartCount > 0 && (
@@ -5140,7 +5523,7 @@ export default function App() {
             }}
             className={`flex flex-col items-center justify-center w-14 h-14 rounded-2xl transition-all relative ${['buyer_dashboard', 'vendor_dashboard', 'admin_dashboard'].includes(currentView) ? 'text-white' : 'text-slate-500 hover:text-slate-300'}`}
           >
-            {['buyer_dashboard', 'vendor_dashboard', 'admin_dashboard'].includes(currentView) && <motion.div layoutId="activeNav" className="absolute inset-0 bg-indigo-600 rounded-2xl shadow-lg shadow-indigo-500/40" />}
+            {['buyer_dashboard', 'vendor_dashboard', 'admin_dashboard'].includes(currentView) && <motion.div layoutId="activeNav" className="absolute inset-0 bg-emerald-600 rounded-2xl shadow-lg shadow-emerald-500/40" />}
             <User size={22} className="relative z-10" />
             <span className="text-[10px] font-bold mt-1 relative z-10">Account</span>
           </button>
@@ -5181,7 +5564,7 @@ export default function App() {
                       <div key={item.id} className="flex gap-4">
                         <img src={item.image} alt={item.name} className="w-20 h-20 object-cover rounded-xl border border-slate-200" />
                         <div className="flex-1 flex flex-col justify-between">
-                          <div><h4 className="font-bold text-slate-900 line-clamp-1">{item.name}</h4><p className="text-indigo-600 font-medium">${item.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p></div>
+                          <div><h4 className="font-bold text-slate-900 line-clamp-1">{item.name}</h4><p className="text-emerald-600 font-medium">${item.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p></div>
                           <div className="flex items-center justify-between mt-2">
                             <div className="flex items-center gap-3 bg-slate-100 rounded-lg px-2 py-1"><button onClick={() => updateQuantity(item.id, -1)} className="text-slate-500 hover:text-slate-900"><Minus size={14} /></button><span className="text-sm font-bold w-4 text-center">{item.quantity}</span><button onClick={() => updateQuantity(item.id, 1)} className="text-slate-500 hover:text-slate-900"><Plus size={14} /></button></div>
                             <button onClick={() => updateQuantity(item.id, -item.quantity)} className="text-red-400 hover:text-red-600 p-1"><Trash2 size={16} /></button>
@@ -5205,7 +5588,7 @@ export default function App() {
                         setIsCheckoutOpen(true);
                       }
                     }} 
-                    className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
+                    className="w-full bg-emerald-600 text-white font-bold py-4 rounded-xl hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-200"
                   >
                     Proceed to Checkout
                   </button>
@@ -5225,12 +5608,12 @@ export default function App() {
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50"><h2 className="text-xl font-bold text-slate-900 flex items-center gap-2"><CreditCard size={24} /> Secure Checkout</h2><button onClick={() => setIsCheckoutOpen(false)} className="p-2 text-slate-400 hover:text-slate-900 rounded-full hover:bg-slate-200 transition-colors"><X size={20} /></button></div>
                 <div className="p-6 overflow-y-auto">
                   <form id="checkout-form" onSubmit={handleCheckout} className="space-y-5">
-                    <div><label className="block text-sm font-medium text-slate-700 mb-1">Shipping Address</label><textarea required name="address" rows={3} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none resize-none" placeholder="1 Space Center Blvd..."></textarea></div>
+                    <div><label className="block text-sm font-medium text-slate-700 mb-1">Shipping Address</label><textarea required name="address" rows={3} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none resize-none" placeholder="1 Space Center Blvd..."></textarea></div>
                     
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-2">Shipping Method</label>
                       <div className="grid grid-cols-2 gap-4">
-                        <label className={`border rounded-xl p-4 cursor-pointer transition-all ${shippingMethod === 'Standard' ? 'border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600' : 'border-slate-200 hover:border-slate-300'}`}>
+                        <label className={`border rounded-xl p-4 cursor-pointer transition-all ${shippingMethod === 'Standard' ? 'border-emerald-600 bg-emerald-50 ring-1 ring-emerald-600' : 'border-slate-200 hover:border-slate-300'}`}>
                           <input type="radio" name="shipping" value="Standard" checked={shippingMethod === 'Standard'} onChange={() => setShippingMethod('Standard')} className="hidden" />
                           <div className="flex justify-between items-center mb-1">
                             <span className="font-bold text-slate-900">Standard</span>
@@ -5238,7 +5621,7 @@ export default function App() {
                           </div>
                           <p className="text-xs text-slate-500">3-5 business days</p>
                         </label>
-                        <label className={`border rounded-xl p-4 cursor-pointer transition-all ${shippingMethod === 'Express' ? 'border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600' : 'border-slate-200 hover:border-slate-300'}`}>
+                        <label className={`border rounded-xl p-4 cursor-pointer transition-all ${shippingMethod === 'Express' ? 'border-emerald-600 bg-emerald-50 ring-1 ring-emerald-600' : 'border-slate-200 hover:border-slate-300'}`}>
                           <input type="radio" name="shipping" value="Express" checked={shippingMethod === 'Express'} onChange={() => setShippingMethod('Express')} className="hidden" />
                           <div className="flex justify-between items-center mb-1">
                             <span className="font-bold text-slate-900">Express</span>
@@ -5249,7 +5632,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex items-center gap-3"><CreditCard className="text-slate-400" /><div className="flex-1"><p className="text-sm font-medium text-slate-900">Credit Card</p><p className="text-xs text-slate-500">Mock payment for demo</p></div><CheckCircle2 className="text-indigo-600" size={20} /></div>
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex items-center gap-3"><CreditCard className="text-slate-400" /><div className="flex-1"><p className="text-sm font-medium text-slate-900">Credit Card</p><p className="text-xs text-slate-500">Mock payment for demo</p></div><CheckCircle2 className="text-emerald-600" size={20} /></div>
                     
                     <div className="border-t border-slate-200 pt-4 space-y-2">
                       <div className="flex justify-between text-sm text-slate-600"><span>Subtotal</span><span>${cartTotal.toFixed(2)}</span></div>
@@ -5259,7 +5642,7 @@ export default function App() {
                   </form>
                 </div>
                 <div className="p-6 border-t border-slate-100 bg-slate-50">
-                  <button form="checkout-form" type="submit" className="w-full bg-slate-900 text-white font-bold py-4 rounded-xl hover:bg-indigo-600 transition-colors shadow-lg">Pay ${finalTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</button>
+                  <button form="checkout-form" type="submit" className="w-full bg-slate-900 text-white font-bold py-4 rounded-xl hover:bg-emerald-600 transition-colors shadow-lg">Pay ${finalTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</button>
                 </div>
               </motion.div>
             </motion.div>
